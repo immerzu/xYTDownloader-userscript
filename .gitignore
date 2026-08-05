@@ -1,0 +1,32 @@
+# ============================================================
+# xYTDownloader-userscript — .gitignore
+# Keine sensiblen Daten / Artefakte / fremde Dateien hochladen
+# ============================================================
+
+# Test-Artefakte (Playwright: Console-Logs, Snapshots, Downloads)
+.playwright-mcp/
+
+# Build-Artefakte (versionierte Builds bleiben lokal in Ausgabe/)
+Ausgabe/
+
+# Reasonix-Metadaten (nicht projektrelevant)
+.reasonix/
+
+# Test-/Debug-Ausgaben
+console-dedup.txt
+
+# Fremdes Referenz-Skript (GreasyFork, enthält API-Key) — nicht unser Code
+Youtube Tools All in one local download mp3 mp4 HIGT QUALITY return dislikes and more-2.5.txt
+
+# Browser-Snapshots / Screenshots (können Login-Daten enthalten)
+*.yml
+*.png
+*.bmp
+*.jpg
+*.jpeg
+
+# Temporäre Dateien
+*.tmp
+*.bak
+*.bak-*
+*.log
