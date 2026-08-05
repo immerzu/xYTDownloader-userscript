@@ -712,3 +712,26 @@ Nutzer-Präzisierung: „60 % nur, wenn der Button über einem Video liegt!" →
 | 4 | Doku synchronisiert (Git-Aussagen) | **erfüllt** (AGENTS.md, DOKUMENTATION §8) |
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.49.user.js` (MD5 `1fe1fb78a891bdf090de33efb1dc59fa`, per `cmp` identisch zur Arbeitsversion).
+
+
+## 25. v1.0.50 — Bugfix: WEBM/Opus-Audio darf nicht in den DASH-Merge
+
+**Stand:** v1.0.50 (2026-08-05) — **Zwei Bugs gefunden und behoben: (1) pickMergeAudio konnte WEBM/Opus-Audio für den Merge liefern → kaputte Datei; (2) Operator-Präzedenz-Bug im DL-URL-PARAMS-Log.**
+
+### Bug 1 (funktional, Hauptfix): pickMergeAudio lieferte WEBM/Opus-Audio
+- **Symptom:** Bei Videos, die über ANDROID_VR NUR `audio/webm; codecs="opus"` liefern (kein MP4-Audio), fiel `pickMergeAudio` auf den `audioOnly`-Fallback zurück → `mergeFmp4` bekam einen EBML-Container statt MP4-Boxen → produzierte eine kaputte Datei („Führe Video + Audio zusammen" mit opus/webm). Die Doku sagt explizit „WEBM/Opus not supported for merging" — der Code verhinderte es aber nicht.
+- **Fix:** `pickMergeAudio` filtert jetzt hart auf `audio/mp4`; wenn kein MP4-Audio existiert → `null` → DASH-Button lädt Video-only ohne Merge (kein Ton, aber gültige Datei). Normales Verhalten (MP4-Audio vorhanden, itag 140 bevorzugt) unverändert.
+- **Test:** Isolierter Vergleich alt vs. neu — nur-webm: alt=`audio/webm` (Bug) → neu=`null` (Fix); gemischt: alt=neu=`audio/mp4 itag140` (unverändert). E2E-Panel (Rick, MP4-Audio vorhanden): 5 DASH-Buttons mit korrektem `video/webm + audio/mp4 → …MP4`-Merge, itag 313.
+
+### Bug 2 (Log): Operator-Präzedenz in DL-URL-PARAMS
+- **Symptom:** `' | mime=' + (u.match(...) || [])[1] || '?'` — das `|| '?'` wirkte auf die GESAMTE String-Kette (nie leer → wirkungslos); ohne `mime=` in der URL stand `undefined` im Log statt `?`.
+- **Fix:** `((u.match(...) || [])[1] || '?')` — korrekte Klammerung (wie beim itag-Teil darunter).
+
+### Erfolgskriterien
+| # | Kriterium | Status |
+|---|-----------|--------|
+| 1 | Bug gefunden + reproduziert | **erfüllt** (isolierter Vergleich, nur-webm-Fall) |
+| 2 | Fix ohne Verhaltensänderung im Normalfall | **erfüllt** (gemischt: alt=neu; E2E-Panel intakt) |
+| 3 | Build v1.0.50 abgelegt | **erfüllt** (MD5 `96854c59c67a3bb5d6abbc6a581f3a40`, cmp-identisch) |
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.50.user.js` (MD5 `96854c59c67a3bb5d6abbc6a581f3a40`, per `cmp` identisch zur Arbeitsversion, API-Key = Platzhalter).

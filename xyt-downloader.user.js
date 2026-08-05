@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.49
+// @version      1.0.50
 // @description  One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound.
 // @author       Ede
 // @match        *://www.youtube.com/*
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.49';
+  const MY_VERSION = '1.0.50';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -772,12 +772,18 @@
   // Wählt den besten MP4-Audio-Stream für den Merge (itag 140 AAC bevorzugt).
   // Nur MP4-Audio (mp4a/AAC) passt in den MP4-Container — Opus/WEBM nicht.
   function pickMergeAudio(audioOnly) {
+    // v1.0.50 BUGFIX: NUR MP4-Audio für den DASH-Merge zulassen — mergeFmp4
+    // baut MP4-Boxen (ftyp/moov/moof/mdat) und kann WEBM/Opus (EBML) NICHT
+    // verarbeiten. Vorher fiel der Code auf audioOnly zurück, wenn kein
+    // MP4-Audio existierte → kaputte Datei („Führe Video + Audio zusammen"
+    // mit opus/webm). Jetzt: kein MP4-Audio → null → DASH-Button lädt
+    // Video-only ohne Merge (kein Ton, aber gültige Datei).
     if (!Array.isArray(audioOnly) || audioOnly.length === 0) return null;
     const mp4 = audioOnly.filter(function (s) { return (s.mime || '').indexOf('audio/mp4') === 0; });
-    const pool = mp4.length > 0 ? mp4 : audioOnly;
+    if (mp4.length === 0) return null; // kein MP4-Audio → kein Merge möglich
     // Höchste Bitrate zuerst (extractStreams sortiert schon, hier zusätzlich sichern)
-    pool.sort(function (a, b) { return (b.bitrate || 0) - (a.bitrate || 0); });
-    return pool[0] || null;
+    mp4.sort(function (a, b) { return (b.bitrate || 0) - (a.bitrate || 0); });
+    return mp4[0] || null;
   }
 
   // -------------------------------------------------------------------------
@@ -1743,7 +1749,7 @@
       if (stream && stream.url) {
         const u = String(stream.url);
         dbg('[xYT] DL-URL-PARAMS: range=' + (/range=\d+\/\d+/i.test(u)) + ' | ratebypass=' + (/ratebypass=/i.test(u))
-          + ' | mime=' + (u.match(/mime=([^&]*)/) || [])[1] || '?'
+          + ' | mime=' + ((u.match(/mime=([^&]*)/) || [])[1] || '?')
           + ' | itag-URL=' + ((u.match(/[?&]itag=(\d+)/i) || [])[1] || '?'));
       }
 
