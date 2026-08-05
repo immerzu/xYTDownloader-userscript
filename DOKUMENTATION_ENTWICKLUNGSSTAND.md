@@ -7,7 +7,7 @@
 
 ## 1. Projektstruktur (vollständig)
 
-**Arbeitsverzeichnis:** `F:\001_Coding_Projekte\xYTDownloader` (kein Git-Repository — siehe Abschnitt 8)
+**Arbeitsverzeichnis:** `F:\001_Coding_Projekte\xYTDownloader` (Git-Repository — siehe Abschnitt 8)
 
 ```
 F:\001_Coding_Projekte\xYTDownloader\
@@ -163,7 +163,7 @@ Aktuelle Real-Tests (Playwright + echter ANDROID_VR-Request) je Version: siehe *
 
 ## 8. Git-Status
 
-**Kein Git-Repository.** Verifiziert: `git status --short --branch` → `fatal: not a git repository (or any of the parent directories): .git`. Es gibt keinen Branch, keinen Commit-Hash, keine Versionierung über Git. (Versionierung ausschließlich über die `@version`-Zeile im Metablock + Build-Dateien in `Ausgabe\`.)
+**Git-Repository vorhanden (seit 2026-08-05).** Remote: `https://github.com/immerzu/xYTDownloader-userscript` (öffentlich, Branch `main`). Erster Commit: `2386771` („xYTDownloader v1.0.48 …"). 7 Dateien im Repo: `.gitignore`, `README.md` (dreisprachig EN/DE/RU), `xyt-downloader.user.js` (API-Key = Platzhalter `HIER_API_KEY_EINFUEGEN`), `AGENTS.md`, `BERICHT.md`, `DOKUMENTATION_ENTWICKLUNGSSTAND.md`, `ANALYSE_*.md`. Versionierung zusätzlich über die `@version`-Zeile im Metablock + Build-Dateien in `Ausgabe\` (lokal, nicht im Repo).
 
 ---
 

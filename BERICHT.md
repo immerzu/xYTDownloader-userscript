@@ -684,3 +684,31 @@ Nutzer-Präzisierung: „60 % nur, wenn der Button über einem Video liegt!" →
 **Hinweis Test-Hürde:** Während der Verifikation stellte sich heraus, dass im Playwright-Browser noch Tampermonkey mit **xYTDownloader v1.0.46** (aktiv, `opacity: .85`) installiert war — dessen 5 Style-Elemente verfälschten die Messung (doppelter Button, falsche Deckkraft). Gelöst: alte Version aus Tampermonkey entfernt, v1.0.48 per Datei-Import installiert, danach saubere Messung.
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.48.user.js` (MD5 `26b70f54fdf2550bde8cb0691b2d309a`, per `cmp` identisch zur Arbeitsversion).
+
+
+## 24. v1.0.49 — Sicherheits-Update (API-Key entfernt) + GitHub-Repo
+
+**Stand:** v1.0.49 (2026-08-05) — **Der savenow.to-API-Key (deaktivierter Fallback-Pfad) wurde aus allen öffentlichen Quellen entfernt (Platzhalter). Zusätzlich wurde das Projekt auf GitHub veröffentlicht.**
+
+### Sicherheits-Update (v1.0.49)
+1. **Auslöser:** Prüfung ergab, dass der echte API-Key (savenow.to, deaktivierter Fallback-Pfad) im öffentlichen Greasy-Fork-Quellcode (v1.0.48) sichtbar war.
+2. **Fix:** `API_KEY` in der Arbeitsversion durch Platzhalter `HIER_API_KEY_EINFUEGEN` ersetzt (Funktionalität unverändert — der savenow-Fallback ist seit v1.0.19 deaktiviert, primär ist der ANDROID_VR-Client ohne Key).
+3. **Greasy-Fork-Update v1.0.49** veröffentlicht (Changelog EN/DE „Security: API key replaced with placeholder").
+4. **Verifiziert:** Code-Seite live zeigt `@version 1.0.49`, KEIN echter Key, Platzhalter vorhanden. Versionsverlauf: 1.0.49 / 1.0.48 / 1.0.46.
+5. **Grenze:** Alte Versionen (v1.0.46/1.0.48) im Greasy-Fork-Versionsverlauf enthalten den Key noch (historisch einsehbar, nicht nachträglich entfernbar) — aktueller Stand ist bereinigt.
+
+### GitHub-Repo (neu)
+- **URL:** https://github.com/immerzu/xYTDownloader-userscript (öffentlich, Branch main, 1 Commit `2386771`)
+- **7 Dateien:** `.gitignore`, `README.md` (dreisprachig EN/DE/RU), `xyt-downloader.user.js` (Platzhalter), `AGENTS.md`, `BERICHT.md`, `DOKUMENTATION_ENTWICKLUNGSSTAND.md`, `ANALYSE_*.md`
+- **Nicht im Repo** (sensibel/irrelevant, via .gitignore): `.playwright-mcp/`, `Ausgabe/`, `.reasonix/`, `console-dedup.txt`, `Youtube Tools…-2.5.txt` (fremdes Skript mit Key), `*.yml`/`*.png` (Snapshots/Screenshots mit Login-Daten)
+- **Sicherheitsregel global verankert:** %APPDATA%\reasonix\REASONIX.md („Keine sensiblen Daten auf Plattformen hochladen") + Background-Memory `keine-sensiblen-daten-hochladen` — gilt für ALLE Agenten, alle Projekte.
+
+### Erfolgskriterien (Aufgabe „GitHub-Repo erstellen")
+| # | Kriterium | Status |
+|---|-----------|--------|
+| 1 | Repo erstellt + hochgeladen | **erfüllt** (immerzu/xYTDownloader-userscript, 1 Commit) |
+| 2 | Keine sensiblen Daten hochgeladen | **erfüllt** (API-Key → Platzhalter, .gitignore, verifiziert online) |
+| 3 | Projektbeschreibung EN/DE/RU | **erfüllt** (README dreisprachig) |
+| 4 | Doku synchronisiert (Git-Aussagen) | **erfüllt** (AGENTS.md, DOKUMENTATION §8) |
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.49.user.js` (MD5 `1fe1fb78a891bdf090de33efb1dc59fa`, per `cmp` identisch zur Arbeitsversion).
