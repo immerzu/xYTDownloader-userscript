@@ -61,7 +61,7 @@ The script talks directly to YouTube's Innertube API using the **ANDROID_VR** cl
 
 ## Security note / Sicherheitshinweis / Примечание о безопасности
 
-The `API_KEY` constant (deactivated savenow.to fallback path) is **replaced with a placeholder** in this repository for security reasons. The real key only exists in the published Greasy Fork version — the savenow fallback is disabled anyway (primary path is the ANDROID_VR client without any API key).
+The `API_KEY` constant (deactivated savenow.to fallback path) is **replaced with a placeholder** in this repository and in all public sources (including the published Greasy Fork version) for security reasons. The savenow fallback is disabled anyway — the primary path is the ANDROID_VR client without any API key.
 
 ## License / Lizenz / Лицензия
 

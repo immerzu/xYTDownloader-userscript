@@ -10,12 +10,12 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 - `BERICHT.md` pro Build mit neuem Abschnitt aktualisieren.
 - **Git-Repo vorhanden** (seit 2026-08-05): `immerzu/xYTDownloader-userscript` auf GitHub. Commits/Pushes sind ERLAUBT und erwünscht (nur keine sensiblen Daten hochladen — API-Key bleibt Platzhalter). Kein Tag/Release per Git.
 - **R8/Minify: immer verboten** (nicht zutreffend hier, aber projektübergreifende Regel).
-- savenow.to/dubs.io-Fallback-Code (`DEAKTIVIERTER FALLBACK-PFAD`, Z. 1149) **deaktiviert lassen**, nie reaktivieren.
+- savenow.to/dubs.io-Fallback-Code (`DEAKTIVIERTER FALLBACK-PFAD`, Z. 1155) **deaktiviert lassen**, nie reaktivieren.
 
 ## Architektur
 
 - `getVideoId()` (Z. 218): `?v=`-Param → `/shorts/<id>`-Pfad → PlayerResponse. Rückgabe: reine Video-ID.
-- `fetchAndroidVrPlayer(videoId)` (Z. 861): `POST youtubei/v1/player`, Client `ANDROID_VR` (Name 28, Version 1.65.10, Oculus Quest 3) — liefert signierte googlevideo-URLs **ohne POT-Token** (JDownloader2-Ansatz, Hauptpfad).
+- `fetchAndroidVrPlayer(videoId)` (Z. 867): `POST youtubei/v1/player`, Client `ANDROID_VR` (Name 28, Version 1.65.10, Oculus Quest 3) — liefert signierte googlevideo-URLs **ohne POT-Token** (JDownloader2-Ansatz, Hauptpfad).
 - `extractStreams(pr)`: liefert `{progressive, videoOnly, audioOnly, video}` — `video` = flache Liste ≥360p, dedupliziert pro **`s.res`** (Label-Auflösung; bei Shorts ist `height` die lange Hochkant-Seite!), beste Codecs avc1 > vp9 > av01, absteigend.
 - `downloadUrl()`: manuelles 4-MB-Range-Chunking (`CHUNK_SIZE`), eigene `received`-Zählung (Yandex-`onprogress` ist nicht inkrementell), Blob → `<a download>`.
 - `runDownload(kind, stream, …)`: direkt bei progressiv; DASH-videoOnly → automatischer Merge mit bestem Audio-Stream (`pickMergeAudio`, itag 140 bevorzugt).
@@ -35,9 +35,10 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 - `@connect` explizit (Wildcards unzuverlässig in Yandex): `p.lbserver.xyz`, `*.lbserver.xyz`, `*.googlevideo.com` u. a.
 - Kurzlinks (youtu.be/…) sind nicht abgedeckt (nur /watch- und /shorts-Seiten).
 
-## Veröffentlichung (Stand v1.0.46)
+## Veröffentlichung (Stand v1.0.50)
 
-- Greasy Fork: https://greasyfork.org/de/scripts/589972-xytdownloader (Name „xYTDownloader", Skript-ID 589972)
+- Greasy Fork: https://greasyfork.org/de/scripts/589972-xytdownloader (Name „xYTDownloader", Skript-ID 589972; **online v1.0.49**, lokaler Build v1.0.50 — Upload ausstehend)
 - Update-URL für künftige Versionen: https://greasyfork.org/de/scripts/589972/versions/new (Skill `greasy-fork-publish`)
 - Install-Link: https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js
+- GitHub-Repo: https://github.com/immerzu/xYTDownloader-userscript (öffentlich, Branch main)
 - Reddit-Post: https://www.reddit.com/r/userscripts/comments/1vg0oiz/script_xytdownloader_oneclick_youtube_downloader/
