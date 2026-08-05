@@ -735,3 +735,26 @@ Nutzer-Präzisierung: „60 % nur, wenn der Button über einem Video liegt!" →
 | 3 | Build v1.0.50 abgelegt | **erfüllt** (MD5 `96854c59c67a3bb5d6abbc6a581f3a40`, cmp-identisch) |
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.50.user.js` (MD5 `96854c59c67a3bb5d6abbc6a581f3a40`, per `cmp` identisch zur Arbeitsversion, API-Key = Platzhalter).
+
+
+## 26. Greasy-Fork-Webhook eingerichtet (Auto-Update via GitHub-Push)
+
+**Stand:** 2026-08-05 — **Push auf das GitHub-Repo (immerzu/xYTDownloader-userscript) aktualisiert das Greasy-Fork-Skript (589972) jetzt automatisch — kein manueller Upload mehr nötig.**
+
+### Einrichtung (2 Teile)
+1. **Greasy-Fork-Sync aktiviert** (Admin-Tab des Skripts 589972):
+   - Sync-URL: `https://raw.githubusercontent.com/immerzu/xYTDownloader-userscript/main/xyt-downloader.user.js`
+   - Modus: Automatisch
+   - Ergebnis: „Skript erfolgreich synchronisiert, aber es wurden keine Änderungen gefunden" (v1.0.50 == v1.0.50)
+2. **GitHub-Webhook registriert** (Repo-Settings → Webhooks, ID 661732457):
+   - Payload URL: `https://greasyfork.org/de/users/1629833-immerzu/webhook`
+   - Content type: application/json
+   - Event: Just the push event
+   - **Secret:** kontospezifisches Greasy-Fork-Secret (auf /users/webhook-info sichtbar) — ohne Secret antwortet Greasy Fork mit 403 (beobachtet und behoben)
+
+### Ablauf künftig
+Version im Metablock (@version + MY_VERSION) anheben → git commit + push → GitHub-Webhook → Greasy Fork aktualisiert automatisch. Manueller Upload per Skill `greasy-fork-publish` nur noch als Fallback/Verifikation.
+
+### Hinweise
+- Greasy Fork liest die Version aus dem @version-Tag des Repo-Codes — der API-Key ist im Repo Platzhalter (Sicherheitsregel), der deaktivierte savenow-Fallback wäre online nie funktionsfähig (akzeptiert).
+- Erst-Ping ohne Secret ergab 403; nach Secret-Eintrag + Redeliver muss der echte Push-Test den 200-Status bestätigen.
