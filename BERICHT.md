@@ -757,4 +757,4 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 
 ### Hinweise
 - Greasy Fork liest die Version aus dem @version-Tag des Repo-Codes — der API-Key ist im Repo Platzhalter (Sicherheitsregel), der deaktivierte savenow-Fallback wäre online nie funktionsfähig (akzeptiert).
-- Erst-Ping ohne Secret ergab 403; nach Secret-Eintrag + Redeliver muss der echte Push-Test den 200-Status bestätigen.
+- Erst-Ping ohne Secret ergab 403; nach Secret-Eintrag + Content-Type-Fix (application/json statt form-urlencoded) + Redeliver muss der echte Push-Test den 200-Status bestätigen.
