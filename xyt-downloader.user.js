@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.56
+// @version      1.0.57
 // @description  YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch und /shorts. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton. / One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound. / Пользовательский скрипт для скачивания видео с YouTube в один клик. Поддерживает все качества до 4K со звуком. Работает на /watch и /shorts. Без внешних API, прямой клиент ANDROID_VR. Слияние DASH для высоких разрешений со звуком.
 // @author       Ede
 // @match        *://www.youtube.com/*
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.56';
+  const MY_VERSION = '1.0.57';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -648,6 +648,8 @@
                 if (!buf || !buf.byteLength) {
                   if (res && res.status === 204) {
                     reject(new Error('Stream nicht direkt herunterladbar (Status 204) — beendete Livestreams stellen oft keine direkten Downloads bereit. Versuche eine andere Auflösung oder warte einige Stunden.'));
+                  } else if (res && res.status === 403) {
+                    reject(new Error('Zugriff verweigert (Status 403) — der Stream ist IP-gebunden oder zeitlich abgelaufen. Bitte lade die Seite neu und versuche es erneut.'));
                   } else {
                     throw new Error('leere Chunk-Antwort (Status ' + (res && res.status) + ')');
                   }
@@ -1911,10 +1913,13 @@
           }
         }
         // Beide Streams PARALLEL laden (jeder mit eigener Chunk-Kette)
-        const vPromise = downloadStreamBytes(stream.url, stream.size, function (received) { vRecv = received; reportMerge(); });
-        const aPromise = downloadStreamBytes(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); });
-        const vBytes = await vPromise;
-        const aBytes = await aPromise;
+        // v1.0.57: SEQUENZIELLER Download (erst Video, dann Audio) —
+        // parallele Range-Request-Sequenzen auf googlevideo führten bei
+        // DASH-Video+Audio-Merge zu 403 nach einigen Chunks (YouTube erkennt
+        // und blockt zwei gleichzeitige Download-Ströme von derselben IP).
+        // JD2 lädt ebenfalls sequenziell (erst alle Video-Chunks, dann Audio).
+        const vBytes = await downloadStreamBytes(stream.url, stream.size, function (received) { vRecv = received; reportMerge(); });
+        const aBytes = await downloadStreamBytes(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); });
         setStatusText('Führe Video + Audio zusammen …');
         dbg('[xYT] MERGE-LADEN-FERTIG: Video=' + vBytes.length + ' B, Audio=' + aBytes.length + ' B');
         const merged = mergeFmp4(vBytes, aBytes);

@@ -842,3 +842,19 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 - Syntax: `node --check` → SYNTAX OK. Sicherheit: 0× Key/Secret.
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.56.user.js` (MD5 `be68bd8aaf60df70c1b9cbde7a2cbbf2`, per `cmp` identisch zur Arbeitsversion).
+
+## 31. v1.0.57 — BUGFIX: 403 bei DASH-Merge (parallele Downloads → sequenziell)
+
+**Stand:** 2026-08-07 — Nutzer meldete für `2xwoQZClEew` 720p-Download: läuft bis 12/2780 MB, dann 403 im Merge-Pfad.
+
+### Ursache
+- 720p ist ein DASH-videoOnly-Stream (itag 136) → Merge mit Audio itag 140
+- `downloadStreamBytes` für Video UND Audio wurden **gleichzeitig** gestartet (parallel)
+- YouTube erkennt zwei parallele Range-Request-Sequenzen von derselben IP und blockt mit 403 (Abuse-Detection)
+- 360p (progressiv, eine URL) funktionierte weiterhin, weil nur EIN Stream läuft
+
+### Änderung
+- Merge-Pfad lädt jetzt **sequenziell**: erst Video-Chunks, dann Audio-Chunks (`await vBytes`, dann `await aBytes`) — so wie JDownloader2
+- 403-Fehlermeldung jetzt verständlich: „Zugriff verweigert (Status 403) — der Stream ist IP-gebunden oder zeitlich abgelaufen. Bitte lade die Seite neu und versuche es erneut."
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.57.user.js` (MD5 `b7d5cbe40e8fd9bf3deb110839f9328d`, per `cmp` identisch zur Arbeitsversion). Syntax OK, 0× Key/Secret.
