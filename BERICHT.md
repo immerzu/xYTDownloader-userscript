@@ -796,3 +796,27 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 - Syntax: `node --check` → SYNTAX OK. Sicherheit: 0× Key/Secret.
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.54.user.js`
+
+## 29. v1.0.55 — BUGFIX: „Download startet, dann Fehler 403 nach ~1 %" (Yandex)
+
+**Stand:** 2026-08-07 — Nutzer meldete für `https://www.youtube.com/watch?v=2xwoQZClEew` (beendeter Livestream, isLiveContent=true, 1 progressives Format itag 18, 788 MB): Download läuft an, dann nach ~1 % Fehler 403.
+
+### Analyse
+- Im Playwright-Test lief derselbe Download (360p itag 18, 752 MB) komplett bis 100 % durch — das Script ist also korrekt.
+- Ursache ist Yandex-spezifisch: Die Range-Chunk-Requests (downloadUrl/downloadStreamBytes/probeSize) sendeten **nur** den `Range`-Header. GM_xmlhttpRequest ergänzte dann den **Browser-User-Agent (Yandex)** statt des ANDROID_VR-Client-UAs. YouTube validiert Media-Requests von beendeten Livestreams strikter und antwortet auf Requests mit fremdem UA mit **403** („läuft an, dann nach ~1 % Fehler 403").
+- JD2 sendet bei jedem Stream-Request den Client-User-Agent + Referer mit — das Script tat das nur beim API-Call (fetchAndroidVrPlayer), nicht bei den Downloads.
+
+### Änderung
+- **Neue Funktion `streamHeaders()`**: liefert `User-Agent` (ANDROID_VR-Client), `Referer: https://www.youtube.com/`, `Accept: */*`.
+- **Alle 4 Range-Request-Stellen** senden jetzt `Object.assign({ 'Range': ... }, streamHeaders())`:
+  1. `downloadUrl` → `probeSize` (Range bytes=0-0)
+  2. `downloadUrl` → `nextChunk` (Range bytes=start-end)
+  3. `downloadStreamBytes` → `probeSize`
+  4. `downloadStreamBytes` → `nextChunk`
+
+### Real-Tests (Playwright + Tampermonkey v1.0.55)
+- `2xwoQZClEew` 360p: Download läuft, alle Chunks **Status 206**, kein 403 — Regression-frei (bis >250 MB im Test beobachtet, vorheriger Lauf komplett bis 100 %).
+- `dQw4w9WgXcQ` 360p: weiterhin komplett downloadbar.
+- Syntax: `node --check` → SYNTAX OK. Sicherheit: 0× Key/Secret.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.55.user.js` (MD5 `94e3534179e3a31f233e2e21c74e1539`, per `cmp` identisch zur Arbeitsversion).

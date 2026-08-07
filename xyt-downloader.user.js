@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.54
+// @version      1.0.55
 // @description  YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch und /shorts. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton. / One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound. / Пользовательский скрипт для скачивания видео с YouTube в один клик. Поддерживает все качества до 4K со звуком. Работает на /watch и /shorts. Без внешних API, прямой клиент ANDROID_VR. Слияние DASH для высоких разрешений со звуком.
 // @author       Ede
 // @match        *://www.youtube.com/*
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.54';
+  const MY_VERSION = '1.0.55';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -419,7 +419,7 @@
         GM_xmlhttpRequest({
           method: 'GET',
           url: String(url),
-          headers: { 'Range': 'bytes=0-0' },
+          headers: Object.assign({ 'Range': 'bytes=0-0' }, streamHeaders()),
           responseType: 'arraybuffer',
           timeout: 15000,
           onload: function (res) {
@@ -472,7 +472,7 @@
         GM_xmlhttpRequest({
           method: 'GET',
           url: String(url),
-          headers: { 'Range': 'bytes=' + start + '-' + end },
+          headers: Object.assign({ 'Range': 'bytes=' + start + '-' + end }, streamHeaders()),
           responseType: 'arraybuffer',
           timeout: 60000,
           onload: function (res) {
@@ -599,7 +599,7 @@
           GM_xmlhttpRequest({
             method: 'GET',
             url: String(url),
-            headers: { 'Range': 'bytes=0-0' },
+            headers: Object.assign({ 'Range': 'bytes=0-0' }, streamHeaders()),
             responseType: 'arraybuffer',
             timeout: 15000,
             onload: function (res) {
@@ -639,7 +639,7 @@
           GM_xmlhttpRequest({
             method: 'GET',
             url: String(url),
-            headers: { 'Range': 'bytes=' + start + '-' + end },
+            headers: Object.assign({ 'Range': 'bytes=' + start + '-' + end }, streamHeaders()),
             responseType: 'arraybuffer',
             timeout: 60000,
             onload: function (res) {
@@ -841,6 +841,20 @@
   // -------------------------------------------------------------------------
   function hostOf(url) {
     try { return new URL(url).host; } catch (e) { return String(url).slice(0, 60); }
+  }
+
+  // v1.0.55: Header für googlevideo-Stream-Requests. YouTube validiert bei
+  // beendeten Livestreams (Live-VODs, isLiveContent) die Media-Requests
+  // strikter: Range-Requests mit Browser-UA (Yandex) werden mit 403 abgelehnt
+  // („läuft an, dann nach ~1 % Fehler 403"). JD2 sendet bei jedem Stream-
+  // Request den Client-User-Agent + Referer mit — das machen wir jetzt genauso.
+  function streamHeaders() {
+    const h = {
+      'User-Agent': ANDROID_VR_CONFIG.userAgent,
+      'Referer': 'https://www.youtube.com/',
+      'Accept': '*/*'
+    };
+    return h;
   }
 
   function gmFetch(url, timeoutMs) {
