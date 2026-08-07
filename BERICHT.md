@@ -870,3 +870,15 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 - Für 2780 MB Video: ~695 Chunks × 2 s = ~23 min Extra-Zeit, aber keine 403 mehr
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.58.user.js` (MD5 `d190f41a956c81d24ce54dec6970f8a3`, cmp-identisch). Syntax OK, 0× Key/Secret.
+
+## 33. v1.0.59 — BUGFIX: adaptiver DASH-Stream komplett neugeschrieben (kein Range!)
+
+**Stand:** 2026-08-07 — Range-Chunking (4 MB) auf adaptiven googlevideo-URLs scheiterte nach 3 Requests mit 403 (egal ob parallel, sequenziell oder mit Delay). Ursache: adaptive URLs (DASH, kein ratebypass) erlauben nur ~3-4 Range-Anfragen pro signierter URL — YouTube blockt danach. Progressive URLs (ratebypass=true) sind nicht betroffen.
+
+**Änderung:**
+- **Neue Funktion `downloadFullStream`**: lädt den kompletten Stream mit EINEM GM_xmlhttpRequest (responseType: arraybuffer, 10-Min-Timeout, KEIN Range-Header)
+- Fortschritt via nativer `onprogress`-Events (bei linearem Download funktioniert das)
+- Merge-Pfad: erst Video komplett, dann Audio komplett, dann fMP4-Merge
+- `downloadStreamBytes` (Range-Chunks) bleibt nur für kompatible URLs erhalten
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.59.user.js` (MD5 `77c4b0abba49381d02b94695d9fe49ee`, cmp-identisch). Syntax OK, 0× Key/Secret.

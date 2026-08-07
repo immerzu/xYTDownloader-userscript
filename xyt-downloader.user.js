@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.58
+// @version      1.0.59
 // @description  YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch und /shorts. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton. / One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound. / Пользовательский скрипт для скачивания видео с YouTube в один клик. Поддерживает все качества до 4K со звуком. Работает на /watch и /shorts. Без внешних API, прямой клиент ANDROID_VR. Слияние DASH для высоких разрешений со звуком.
 // @author       Ede
 // @match        *://www.youtube.com/*
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.58';
+  const MY_VERSION = '1.0.59';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -582,6 +582,54 @@
   // liefert am Ende ein Uint8Array, das an mergeFmp4 übergeben werden kann.
   // onProgress(received, knownTotal) wird bei jedem Chunk aufgerufen.
   // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // v1.0.59: MERGE-Download ohne Range. Adaptive googlevideo-URLs (DASH-Streams
+  // ohne ratebypass) erlauben nur 3-4 Range-Anfragen pro URL — danach 403. Die
+  // einzige Lösung: jeder Stream wird als EINER kompletter Download geladen.
+  // Der Fortschritt läuft über onprogress (loadend/loadstart sind in Yandex
+  // nicht inkrementell, aber bei EINEM linearen Download funktioniert es).
+  // -------------------------------------------------------------------------
+  function downloadFullStream(url, knownSize, onProgress) {
+    return new Promise(function (resolve, reject) {
+      try {
+        let lastPct = 0;
+        GM_xmlhttpRequest({
+          method: 'GET',
+          url: String(url),
+          headers: streamHeaders(),
+          responseType: 'arraybuffer',
+          timeout: 600000, // 10 Minuten für große Dateien
+          onprogress: function (r) {
+            if (onProgress && r && r.total > 0) {
+              const pct = Math.round(r.loaded / r.total * 100);
+              if (pct > lastPct + 4) { lastPct = pct; onProgress(r.loaded, r.total); }
+            }
+          },
+          onload: function (res) {
+            try {
+              const buf = res && res.response;
+              if (!buf || !buf.byteLength) {
+                if (res && res.status === 403) {
+                  reject(new Error('Zugriff verweigert (403) — lade die Seite neu und versuche es erneut.'));
+                } else {
+                  reject(new Error('leere Antwort (Status ' + (res ? res.status : '?') + ')'));
+                }
+                return;
+              }
+              resolve(new Uint8Array(buf));
+            } catch (e2) { reject(e2); }
+          },
+          onerror: function (res) {
+            reject(new Error('Netzwerkfehler beim Stream-Download'));
+          },
+          ontimeout: function () {
+            reject(new Error('Timeout beim Stream-Download (zu langsam).'));
+          }
+        });
+      } catch (e) { reject(e); }
+    });
+  }
+
   function downloadStreamBytes(url, expectedSize, onProgress, chunkDelayMs) {
     return new Promise(function (resolve, reject) {
       let knownTotal = Number(expectedSize) || 0;
@@ -1911,7 +1959,7 @@
           + ' (' + (mergeAudio.size || '?') + ' B) → eine MP4');
         hint.textContent = 'Video + Audio werden geladen und zusammengeführt …';
         const total = (Number(stream.size) || 0) + (Number(mergeAudio.size) || 0);
-        let vRecv = 0, aRecv = 0;
+        let vRecv = 0, aRecv = 0, vTotal = 0, aTotal = 0;
         function reportMerge() {
           if (total > 0) {
             const pct = Math.max(0, Math.min(100, Math.round(((vRecv + aRecv) / total) * 100)));
@@ -1922,13 +1970,15 @@
           }
         }
         // Beide Streams PARALLEL laden (jeder mit eigener Chunk-Kette)
-        // v1.0.57: SEQUENZIELLER Download (erst Video, dann Audio) —
-        // parallele Range-Request-Sequenzen auf googlevideo führten bei
-        // DASH-Video+Audio-Merge zu 403 nach einigen Chunks (YouTube erkennt
-        // und blockt zwei gleichzeitige Download-Ströme von derselben IP).
-        // JD2 lädt ebenfalls sequenziell (erst alle Video-Chunks, dann Audio).
-        const vBytes = await downloadStreamBytes(stream.url, stream.size, function (received) { vRecv = received; reportMerge(); }, 2000);
-        const aBytes = await downloadStreamBytes(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); }, 2000);
+        // v1.0.59: OHNE Range (ganzer Download in einem Request). Adaptive
+        // googlevideo-URLs erlauben nur 3-4 Range-Anfragen → 403. EIN Request
+        // pro URL = kein Rate-Limit. Fortschritt via onprogress.
+        dbg('[xYT] MERGE-FULL (kein Range): Video itag=' + stream.itag + ' (' + (stream.size || '?') + ' B) + Audio itag=' + mergeAudio.itag
+          + ' (' + (mergeAudio.size || '?') + ' B) → eine MP4');
+        setStatusText('Video wird geladen …');
+        const vBytes = await downloadFullStream(stream.url, stream.size, function (recv, total) { vRecv = recv; vTotal = total; reportMerge(); });
+        setStatusText('Audio wird geladen …');
+        const aBytes = await downloadFullStream(mergeAudio.url, mergeAudio.size, function (recv, total) { aRecv = recv; aTotal = total; reportMerge(); });
         setStatusText('Führe Video + Audio zusammen …');
         dbg('[xYT] MERGE-LADEN-FERTIG: Video=' + vBytes.length + ' B, Audio=' + aBytes.length + ' B');
         const merged = mergeFmp4(vBytes, aBytes);
