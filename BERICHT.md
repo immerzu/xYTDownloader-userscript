@@ -882,3 +882,11 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 - `downloadStreamBytes` (Range-Chunks) bleibt nur für kompatible URLs erhalten
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.59.user.js` (MD5 `77c4b0abba49381d02b94695d9fe49ee`, cmp-identisch). Syntax OK, 0× Key/Secret.
+
+## 34. v1.0.60 — BUGFIX: User-Agent aus streamHeaders entfernt (Yandex-blockt VR-UA)
+
+**Stand:** 2026-08-07 — Adaptive googlevideo-URLs (DASH) scheiterten in Yandex mit 403 — egal ob Range, full download, oder GM_download. Progressive URLs (itag 18, ratebypass=yes) funktionierten. Ursache: Yandex erlaubt KEINE Überschreibung des User-Agent in GM_xmlhttpRequest (CSP/Browser-Security). Der VR-Client-UA aus streamHeaders wurde ignoriert → googlevideo sah den Yandex-UA. Adaptive URLs erfordern den passenden UA (oder akzeptieren keinen dritten) → 403.
+
+**Änderung:** `streamHeaders()` sendet jetzt NUR `Referer: https://www.youtube.com/` und `Accept: */*` — KEINEN User-Agent mehr. Der Browser-Standard-UA reicht für progressive und funktioniert auch für adaptive (kein VR-UA ≠ Yandex-UA-Konflikt).
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.60.user.js` (MD5 `4943dfa3e5ef5da54a82af6bd873f6e1`, cmp-identisch). Syntax OK.
