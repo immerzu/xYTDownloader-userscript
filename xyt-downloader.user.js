@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.53
+// @version      1.0.54
 // @description  YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch und /shorts. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton. / One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound. / Пользовательский скрипт для скачивания видео с YouTube в один клик. Поддерживает все качества до 4K со звуком. Работает на /watch и /shorts. Без внешних API, прямой клиент ANDROID_VR. Слияние DASH для высоких разрешений со звуком.
 // @author       Ede
 // @match        *://www.youtube.com/*
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.53';
+  const MY_VERSION = '1.0.54';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -217,7 +217,8 @@
 
   function getVideoId() {
     // v1.0.41: Shorts-URLs (/shorts/<videoId>) haben KEINEN ?v=-Parameter —
-    // die ID steckt im Pfad. Zuerst ?v= prüfen, dann /shorts/-Pfad, dann PlayerResponse.
+    // die ID steckt im Pfad. Zuerst ?v= prüfen, dann /shorts/-Pfad, dann
+    // /live/-Pfad (beendete Livestreams/VODs, v1.0.54), dann PlayerResponse.
     try {
       const p = new URLSearchParams(window.location.search);
       const v = p.get('v');
@@ -225,6 +226,10 @@
     } catch (e) { /* ignore */ }
     try {
       const m = window.location.pathname.match(/^\/shorts\/([^\/?&]+)/);
+      if (m && m[1]) return m[1];
+    } catch (e) { /* ignore */ }
+    try {
+      const m = window.location.pathname.match(/^\/live\/([^\/?&]+)/);
       if (m && m[1]) return m[1];
     } catch (e) { /* ignore */ }
     try {
@@ -579,9 +584,48 @@
   // -------------------------------------------------------------------------
   function downloadStreamBytes(url, expectedSize, onProgress) {
     return new Promise(function (resolve, reject) {
-      const knownTotal = Number(expectedSize) || 0;
+      let knownTotal = Number(expectedSize) || 0;
       const chunks = [];
       let received = 0;
+
+      // v1.0.54: Größen-Probe bei unbekannter Größe (Live-VODs liefern kein
+      // contentLength). Ohne Probe blieb der Merge-Fortschritt bei „Starte
+      // Download …" hängen — dieselbe Methode wie in downloadUrl (Range
+      // bytes=0-0 → Content-Range → Gesamtgröße). Macht den %-Balken bei
+      // beendeten Livestreams funktionsfähig.
+      function probeSize() {
+        if (knownTotal > 0) { nextChunk(0); return; }
+        try {
+          GM_xmlhttpRequest({
+            method: 'GET',
+            url: String(url),
+            headers: { 'Range': 'bytes=0-0' },
+            responseType: 'arraybuffer',
+            timeout: 15000,
+            onload: function (res) {
+              try {
+                const cr = String(res && res.responseHeaders || '');
+                const m = cr.match(/content-range:\s*bytes\s+0-0\/(\d+)/i);
+                if (res && res.status === 206 && m && Number(m[1]) > 0) {
+                  knownTotal = Number(m[1]);
+                  dbg('[xYT] DL-PROBE (Merge): Content-Range → Gesamtgröße ' + knownTotal + ' B');
+                  nextChunk(0);
+                  return;
+                }
+                dbg('[xYT] DL-PROBE (Merge): keine Größe ermittelbar (Status ' + (res && res.status) + ') — Chunks ohne %');
+                nextChunk(0);
+              } catch (e2) {
+                dbg('[xYT] DL-PROBE (Merge)-Fehler:', e2);
+                nextChunk(0);
+              }
+            },
+            onerror: function () { nextChunk(0); },
+            ontimeout: function () { nextChunk(0); }
+          });
+        } catch (e) {
+          nextChunk(0);
+        }
+      }
 
       function nextChunk(start) {
         const end = knownTotal > 0
@@ -649,7 +693,13 @@
         }
       }
 
-      nextChunk(0);
+      // v1.0.54: Bei unbekannter Größe erst proben, dann Chunks; sonst direkt
+      // (identisch zu downloadUrl).
+      if (knownTotal > 0) {
+        nextChunk(0);
+      } else {
+        probeSize();
+      }
     });
   }
 
@@ -872,13 +922,21 @@
   //   streamingData.hlsManifestUrl vorhanden → Live-HLS statt formats/adaptive
   // WICHTIG: NICHT isLiveContent verwenden — das ist auch bei VERGANGENEN
   // Live-VODs true, und die sind über normale formats herunterladbar.
+  // v1.0.54 BUGFIX: Beendete Livestreams (isLiveContent=true) liefern ZUSÄTZLICH
+  // zu hlsManifestUrl auch adaptiveFormats (downloadbar via DASH-Merge). Der
+  // hlsManifestUrl-Check darf nur zuschlagen, wenn es GAR KEINE Streams gibt —
+  // vorher wurde WQQUDO-UVH8 (beendeter Live, 7 adaptiveFormats) fälschlich
+  // als „nicht downloadbarer Livestream" abgelehnt.
   // -------------------------------------------------------------------------
   function isLivePlayerResponse(pr) {
     try {
       const vd = pr && pr.videoDetails;
-      if (vd && (vd.isLive === true || vd.isLiveDvrEnabled === true)) return true;
       const sd = pr && pr.streamingData;
-      if (sd && sd.hlsManifestUrl && !(Array.isArray(sd.formats) && sd.formats.length > 0)) return true;
+      const hasFormats = Array.isArray(sd && sd.formats) && sd.formats.length > 0;
+      const hasAdaptive = Array.isArray(sd && sd.adaptiveFormats) && sd.adaptiveFormats.length > 0;
+      if (vd && vd.isLive === true) return true; // läuft gerade live
+      if (vd && vd.isLiveDvrEnabled === true && !hasFormats && !hasAdaptive) return true; // DVR-Live ohne Streams
+      if (sd && sd.hlsManifestUrl && !hasFormats && !hasAdaptive) return true; // nur Live-HLS, keine Datei-Streams
     } catch (e) { /* ignore */ }
     return false;
   }
@@ -1882,7 +1940,9 @@
     }, 400);
   }
   function refresh() {
-    if (!/\/(watch|shorts)/.test(window.location.pathname)) {
+    // v1.0.54: /live/-Pfad (beendete Livestreams/VODs) ist jetzt auch eine
+    // gültige Videoseite.
+    if (!/\/(watch|shorts|live)/.test(window.location.pathname)) {
       dbg('[xYT] Keine /watch- oder /shorts-Seite (Path: ' + window.location.pathname + ') — Button wird nicht angezeigt.');
       hidePanel();
       return;
@@ -1898,7 +1958,7 @@
 
   // Intervall als einfacher, robuster SPA-Detektor
   setInterval(() => {
-    if (/\/(watch|shorts)/.test(window.location.pathname)) {
+    if (/\/(watch|shorts|live)/.test(window.location.pathname)) {
       const id = getVideoId();
       if (id !== boundVideoId) {
         boundVideoId = id;
@@ -1931,7 +1991,7 @@
         // Button fehlt ODER ist unsichtbar (versteckte/entfernte Leiste nach
         // SPA-Wechsel) → neu injizieren. isElementVisible beinhaltet isConnected.
         if (!btn || !isElementVisible(btn)) {
-          if (/\/(watch|shorts)/.test(window.location.pathname) && getVideoId()) {
+          if (/\/(watch|shorts|live)/.test(window.location.pathname) && getVideoId()) {
             attachButton();
           }
         }

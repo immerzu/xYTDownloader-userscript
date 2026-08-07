@@ -779,3 +779,20 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 - Sicherheit: 0× Key/Secret im Build
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.53.user.js` (MD5 `392475da76aef79af7a00c32025eb643`, per `cmp` identisch zur Arbeitsversion).
+
+## 28. v1.0.54 — BUGFIX: Beendete Livestreams (VODs) fälschlich als „nicht downloadbar" abgelehnt
+
+**Stand:** 2026-08-07 — Nutzer meldete: `https://www.youtube.com/live/WQQUDO-UVH8` sei KEIN Livestream und das Script müsse das erkennen. **Analyse (realer ANDROID_VR-Request):** Das Video ist ein **beendeter Livestream (VOD)** — `isLive=false`, `isLiveDvrEnabled=undefined`, `isLiveContent=true`, aber **7 downloadbare adaptiveFormats** + `hlsManifestUrl`. Der in v1.0.53 eingebaute Check `hlsManifestUrl && !formats` schlug fälschlich zu, weil beendete Lives zusätzlich zur HLS-URL auch adaptiveFormats liefern.
+
+### Änderungen
+1. **`isLivePlayerResponse()` korrigiert:** Der hlsManifestUrl-Check greift jetzt nur noch, wenn es **GAR KEINE Streams** gibt (`!hasFormats && !hasAdaptive`). `isLive=true` (läuft gerade) und `isLiveDvrEnabled && !Streams` bleiben als harte Live-Kriterien. Beendete Lives (isLiveContent) mit adaptiveFormats werden jetzt korrekt als downloadbar behandelt.
+2. **`/live/`-URL-Erkennung:** `getVideoId()` parst jetzt auch `/live/<videoId>`; `refresh()`/Intervall/MutationObserver akzeptieren `/(watch|shorts|live)`.
+3. **`downloadStreamBytes()` (Merge-Pfad): Größen-Probe bei unbekannter Größe** — Live-VOD-Formate haben kein `contentLength`, dadurch blieb der Merge-Fortschritt bei „Starte Download …" hängen. Jetzt Range-Probe (`bytes=0-0` → Content-Range) wie in `downloadUrl`; bei Status ≠ 206 läuft der Chunk-Pfad ohne % weiter (kein Stillstand ohne Diagnose).
+
+### Real-Tests (Playwright + Tampermonkey)
+- **`/live/WQQUDO-UVH8`** (beendeter Live): Button ✅, Panel zeigt **1080p/720p/480p/360p** statt Livestream-Fehler ✅, Klick startet DL-START + MERGE-START (Audio itag 140) ✅.
+- **Hinweis Download-Endtest:** Im Playwright-Headless-Kontext liefert YouTube für dieses VOD auf ALLE googlevideo-URLs **204/403** (auch der Player selbst bekommt 403, POT/IP-Bindung) — Test-Umgebungs-Artefakt. Der Nutzer muss den Download-Endtest in der echten Yandex/Tampermonkey-Umgebung machen.
+- **Regression:** Normales Video (dQw4w9WgXcQ) liefert weiterhin contentLength in adaptiveFormats → Probe wird übersprungen, Chunks direkt (kein Verhaltensunterschied).
+- Syntax: `node --check` → SYNTAX OK. Sicherheit: 0× Key/Secret.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.54.user.js`
