@@ -820,3 +820,25 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 - Syntax: `node --check` → SYNTAX OK. Sicherheit: 0× Key/Secret.
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.55.user.js` (MD5 `94e3534179e3a31f233e2e21c74e1539`, per `cmp` identisch zur Arbeitsversion).
+
+## 30. v1.0.56 — BUGFIX: Beendete Livestreams ohne progressive Formate → saubere Meldung statt 204-Fehler
+
+**Stand:** 2026-08-07 — Nutzer meldete für `_JyGnPRxuW4` (beendeter Live): 1080p-Download startet, zeigt "leere Chunk-Antwort (Status 204)" im Merge-Pfad.
+
+### Analyse
+- `_JyGnPRxuW4` hat **NUR adaptiveFormats (DASH)** — **keine progressiven Formate** (formats.length=0)
+- Die DASH-URLs haben kein contentLength und liefern 204 auf Range-Requests
+- `2xwoQZClEew` dagegen HAT ein progressives Format (itag 18) → funktioniert
+- YouTube stellt für manche beendete Livestreams erst nach der Verarbeitung progressive Formate bereit — bei diesen Videos ist der ANDROID_VR-Download aktuell nicht möglich
+
+### Änderungen
+1. **Präventive Erkennung in `loadStreamsIntoPanel`:** Wenn ALLE verfügbaren Video-Streams aus adaptiveFormats stammen UND kein contentLength haben UND das Video `isLiveContent` ist → zeige verständliche Meldung statt Buttons. Kein nutzloses „Erneut versuchen" mehr.
+2. **Bessere 204-Fehlermeldung im Merge-Pfad:** Falls doch ein Button geklickt wird, zeigt der Fehler jetzt eine verständliche Erklärung (nicht nur "Status 204").
+3. **`streamHeaders()`-Funktion (aus v1.0.55) bleibt aktiv:** User-Agent + Referer für Range-Requests — behebt den 403-Fehler bei Live-VODs mit progressivem Format.
+
+### Real-Tests (Playwright + Tampermonkey v1.0.56)
+- **_JyGnPRxuW4** (nur DASH): Panel zeigt saubere Meldung „Dies ist ein beendeter Livestream …" ✅ — keine falschen Buttons mehr
+- **2xwoQZClEew** (hat progressive): Panel zeigt Buttons 1080p/720p/360p mit Größen ✅ — keine Regression
+- Syntax: `node --check` → SYNTAX OK. Sicherheit: 0× Key/Secret.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.56.user.js` (MD5 `be68bd8aaf60df70c1b9cbde7a2cbbf2`, per `cmp` identisch zur Arbeitsversion).

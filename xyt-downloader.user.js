@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.55
+// @version      1.0.56
 // @description  YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch und /shorts. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton. / One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound. / Пользовательский скрипт для скачивания видео с YouTube в один клик. Поддерживает все качества до 4K со звуком. Работает на /watch и /shorts. Без внешних API, прямой клиент ANDROID_VR. Слияние DASH для высоких разрешений со звуком.
 // @author       Ede
 // @match        *://www.youtube.com/*
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.55';
+  const MY_VERSION = '1.0.56';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -645,7 +645,13 @@
             onload: function (res) {
               try {
                 const buf = res && res.response;
-                if (!buf || !buf.byteLength) throw new Error('leere Chunk-Antwort (Status ' + (res && res.status) + ')');
+                if (!buf || !buf.byteLength) {
+                  if (res && res.status === 204) {
+                    reject(new Error('Stream nicht direkt herunterladbar (Status 204) — beendete Livestreams stellen oft keine direkten Downloads bereit. Versuche eine andere Auflösung oder warte einige Stunden.'));
+                  } else {
+                    throw new Error('leere Chunk-Antwort (Status ' + (res && res.status) + ')');
+                  }
+                }
                 chunks.push(buf);
                 received += buf.byteLength;
                 if (res && res.status === 200 && knownTotal > 0 && buf.byteLength >= knownTotal) {
@@ -1664,6 +1670,20 @@
         } else {
           renderPanelMessage('Keine direkten Streams in der Antwort — Video evtl. nicht verfügbar (age-restricted/Livestream?).', true);
         }
+        return;
+      }
+      // v1.0.56: Beendete Livestreams haben oft NUR adaptiveFormats (DASH) ohne
+      // contentLength (size=0, ratebypass=no) — diese liefern bei Range-Requests
+      // 204 No Content und sind nicht herunterladbar. Zeige eine saubere Meldung
+      // statt Buttons, die nur 204-Fehler produzieren würden (kein sinnloser
+      // „Erneut versuchen"-Zyklus). Hat das Video WENIGSTENS ein Format mit
+      // contentLength (progressiv oder adaptiv mit size), werden die Buttons
+      // normal angezeigt (siehe 2xwoQZClEew — itag 18 progressiv funktioniert).
+      const allVideo = streams.video || [];
+      if (allVideo.length > 0
+          && allVideo.every(function (s) { return s.srcArray === 'adaptiveFormats' && !s.size; })
+          && pr.videoDetails && pr.videoDetails.isLiveContent) {
+        renderPanelMessage('Dies ist ein beendeter Livestream. Die verfügbaren Streams (DASH) sind nicht direkt herunterladbar — YouTube erzeugt progressive Formate (360p mit Ton) oft erst nach der Stream-Beendigung. Bitte versuche es in einigen Stunden erneut.', true);
         return;
       }
       // v1.0.45: Titel aus der FRISCHEN ANDROID_VR-Antwort übernehmen —
