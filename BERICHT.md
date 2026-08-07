@@ -758,3 +758,24 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 ### Hinweise
 - Greasy Fork liest die Version aus dem @version-Tag des Repo-Codes — der API-Key ist im Repo Platzhalter (Sicherheitsregel), der deaktivierte savenow-Fallback wäre online nie funktionsfähig (akzeptiert).
 - Erst-Ping ohne Secret ergab 403; nach Secret-Eintrag + Content-Type-Fix (application/json statt form-urlencoded) + Redeliver muss der echte Push-Test den 200-Status bestätigen.
+
+## 27. v1.0.53 — Livestreams sauber abfangen (korrekte Fehlermeldung)
+
+**Stand:** 2026-08-07 — Auslöser: Nutzer meldete „Script läuft nicht mehr" auf `https://www.youtube.com/watch?v=WQQUDO-UVH8`. Analyse ergab: **das Video ist ein LIVESTREAM** („LIVE ❗ Ulrich Siegmund …") — ein dokumentiertes Script-Limit, kein Regressions-Bug. Auftrag: Livestream-Fall muss mit **verständlicher Fehlermeldung** beim Nutzer ankommen.
+
+### Änderungen (nur Livestream-Erkennung, kein Download-Pfad angefasst)
+1. **Neue Funktion `isLivePlayerResponse(pr)`**: erkennt Livestreams anhand
+   - `videoDetails.isLive === true` (läuft gerade live)
+   - `videoDetails.isLiveDvrEnabled === true` (DVR-Live)
+   - `streamingData.hlsManifestUrl` vorhanden UND keine `formats` (Live-HLS statt Datei-Streams)
+   - **WICHTIG:** `isLiveContent` wird bewusst NICHT genutzt — das ist auch bei vergangenen Live-VODs true, die über normale formats herunterladbar sind.
+2. **`fetchAndroidVrPlayer`**: Live-Statuswerte (`LIVE_STREAM_OFFLINE`/`LIVE_STREAM_ENDED`) und Live-PlayerResponses werfen jetzt klare Fehler („Dieses Video ist ein Livestream und kann nicht heruntergeladen werden.") statt generischer Status-Fehler.
+3. **`loadStreamsIntoPanel`**: (a) Fallback-Check `isLivePlayerResponse` bei leeren Streams, (b) Livestream-Fehlermeldungen ohne den Präfix „Formate konnten nicht geladen werden:" (redundant bei klarer Meldung).
+
+### Real-Tests (Playwright, Tampermonkey-Import v1.0.53)
+- **Livestream `WQQUDO-UVH8`**: Button vorhanden, Klick → Panel zeigt rot „Dieses Video ist ein Livestream und kann nicht heruntergeladen werden." ✅
+- **Normales Video `dQw4w9WgXcQ`** (Regression): Panel zeigt normal 2160p/1440p/1080p/720p/480p/360p — kein Livestream-Fehler, keine Regression ✅
+- Syntax: `node --check` → SYNTAX OK
+- Sicherheit: 0× Key/Secret im Build
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.53.user.js` (MD5 `392475da76aef79af7a00c32025eb643`, per `cmp` identisch zur Arbeitsversion).
