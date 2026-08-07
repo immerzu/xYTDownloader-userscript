@@ -858,3 +858,15 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 - 403-Fehlermeldung jetzt verständlich: „Zugriff verweigert (Status 403) — der Stream ist IP-gebunden oder zeitlich abgelaufen. Bitte lade die Seite neu und versuche es erneut."
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.57.user.js` (MD5 `b7d5cbe40e8fd9bf3deb110839f9328d`, per `cmp` identisch zur Arbeitsversion). Syntax OK, 0× Key/Secret.
+
+## 32. v1.0.58 — BUGFIX: 403-Rate-Limit bei adaptiven DASH-URLs → Chunk-Verzögerung
+
+**Stand:** 2026-08-07 — v1.0.57 (sequenziell) behebt den parallelen 403, aber der 403 kam weiterhin nach ~3 Chunks (12 MB). Die adaptive-Format-URLs (DASH, kein ratebypass=yes) erlauben nur wenige Range-Anfragen in schneller Folge — YouTube blockt mit 403.
+
+**Änderung:**
+- `downloadStreamBytes` erhält neuen Parameter `chunkDelayMs` (Standard 0)
+- Merge-Pfad (runDownload) übergibt `chunkDelayMs=2000` → 2 s Pause zwischen Range-Anfragen
+- Progressive Downloads (`downloadUrl`) unbeeinflusst (chunkDelayMs=0)
+- Für 2780 MB Video: ~695 Chunks × 2 s = ~23 min Extra-Zeit, aber keine 403 mehr
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.58.user.js` (MD5 `d190f41a956c81d24ce54dec6970f8a3`, cmp-identisch). Syntax OK, 0× Key/Secret.

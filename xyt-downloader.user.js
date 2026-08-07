@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.57
+// @version      1.0.58
 // @description  YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch und /shorts. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton. / One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound. / Пользовательский скрипт для скачивания видео с YouTube в один клик. Поддерживает все качества до 4K со звуком. Работает на /watch и /shorts. Без внешних API, прямой клиент ANDROID_VR. Слияние DASH для высоких разрешений со звуком.
 // @author       Ede
 // @match        *://www.youtube.com/*
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.57';
+  const MY_VERSION = '1.0.58';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -582,11 +582,12 @@
   // liefert am Ende ein Uint8Array, das an mergeFmp4 übergeben werden kann.
   // onProgress(received, knownTotal) wird bei jedem Chunk aufgerufen.
   // -------------------------------------------------------------------------
-  function downloadStreamBytes(url, expectedSize, onProgress) {
+  function downloadStreamBytes(url, expectedSize, onProgress, chunkDelayMs) {
     return new Promise(function (resolve, reject) {
       let knownTotal = Number(expectedSize) || 0;
       const chunks = [];
       let received = 0;
+      const delay = Number(chunkDelayMs) || 0;
 
       // v1.0.54: Größen-Probe bei unbekannter Größe (Live-VODs liefern kein
       // contentLength). Ohne Probe blieb der Merge-Fortschritt bei „Starte
@@ -661,12 +662,20 @@
                   return;
                 }
                 if (onProgress) onProgress(received, knownTotal);
-                if (knownTotal > 0) {
-                  nextChunk(received);
-                } else if (buf.byteLength < CHUNK_SIZE) {
-                  finishOk();
+                if (delay > 0) {
+                  setTimeout(function () {
+                    if (knownTotal > 0) { nextChunk(received); }
+                    else if (buf.byteLength < CHUNK_SIZE) { finishOk(); }
+                    else { nextChunk(received); }
+                  }, delay);
                 } else {
-                  nextChunk(received);
+                  if (knownTotal > 0) {
+                    nextChunk(received);
+                  } else if (buf.byteLength < CHUNK_SIZE) {
+                    finishOk();
+                  } else {
+                    nextChunk(received);
+                  }
                 }
               } catch (e3) {
                 reject(e3);
@@ -1918,8 +1927,8 @@
         // DASH-Video+Audio-Merge zu 403 nach einigen Chunks (YouTube erkennt
         // und blockt zwei gleichzeitige Download-Ströme von derselben IP).
         // JD2 lädt ebenfalls sequenziell (erst alle Video-Chunks, dann Audio).
-        const vBytes = await downloadStreamBytes(stream.url, stream.size, function (received) { vRecv = received; reportMerge(); });
-        const aBytes = await downloadStreamBytes(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); });
+        const vBytes = await downloadStreamBytes(stream.url, stream.size, function (received) { vRecv = received; reportMerge(); }, 2000);
+        const aBytes = await downloadStreamBytes(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); }, 2000);
         setStatusText('Führe Video + Audio zusammen …');
         dbg('[xYT] MERGE-LADEN-FERTIG: Video=' + vBytes.length + ' B, Audio=' + aBytes.length + ' B');
         const merged = mergeFmp4(vBytes, aBytes);
