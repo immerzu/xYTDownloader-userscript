@@ -928,3 +928,13 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 - **Ganzer Chunking-Flow** (probeSize + nextChunk + reportProgress) bleibt gleich — nur der Transport-Layer wurde von GM_xmlhttpRequest auf pageFetch umgestellt
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.63.user.js` (MD5 `aca71c2a694fc05c9927a4e73473aa10`, cmp-identisch). Syntax OK.
+
+## 38. v1.0.64 — JD2-Methode: HEAD-Probe + URL-Range-Parameter + Firefox-UA
+
+**Stand:** 2026-08-08 — Revert auf funktionierendes v1.0.49, dann JD2's exakte Download-Methode aus dem Live-Log (YoutubeDashV2) übernommen:
+
+1. **HEAD-Request** für Größen-Probe (Content-Length-Header) — nicht GET+Range
+2. **Range als URL-Parameter** `&range=START-END` — NICHT als HTTP-Header
+3. **Firefox-76-User-Agent** + Origin/Referer youtube.com — NICHT VR-UA
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.64.user.js` (MD5 `ced504604f60fd31f05ebd2085233fb3`, cmp-identisch). Syntax OK.
