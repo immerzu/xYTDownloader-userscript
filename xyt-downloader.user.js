@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.63
-// @description  YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch und /shorts. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton. / One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound. / Пользовательский скрипт для скачивания видео с YouTube в один клик. Поддерживает все качества до 4K со звуком. Работает на /watch и /shorts. Без внешних API, прямой клиент ANDROID_VR. Слияние DASH для высоких разрешений со звуком.
+// @version      1.0.64
+// @description  One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound.
 // @author       Ede
 // @match        *://www.youtube.com/*
 // @match        *://youtube.com/*
@@ -14,7 +14,6 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_download
 // @grant        GM_addStyle
-// @grant        unsafeWindow
 // @connect      savenow.to
 // @connect      *.savenow.to
 // @connect      p.savenow.to
@@ -72,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.63';
+  const MY_VERSION = '1.0.64';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -218,8 +217,7 @@
 
   function getVideoId() {
     // v1.0.41: Shorts-URLs (/shorts/<videoId>) haben KEINEN ?v=-Parameter —
-    // die ID steckt im Pfad. Zuerst ?v= prüfen, dann /shorts/-Pfad, dann
-    // /live/-Pfad (beendete Livestreams/VODs, v1.0.54), dann PlayerResponse.
+    // die ID steckt im Pfad. Zuerst ?v= prüfen, dann /shorts/-Pfad, dann PlayerResponse.
     try {
       const p = new URLSearchParams(window.location.search);
       const v = p.get('v');
@@ -227,10 +225,6 @@
     } catch (e) { /* ignore */ }
     try {
       const m = window.location.pathname.match(/^\/shorts\/([^\/?&]+)/);
-      if (m && m[1]) return m[1];
-    } catch (e) { /* ignore */ }
-    try {
-      const m = window.location.pathname.match(/^\/live\/([^\/?&]+)/);
       if (m && m[1]) return m[1];
     } catch (e) { /* ignore */ }
     try {
@@ -259,23 +253,6 @@
       }
     } catch (e) { /* ignore */ }
     return null;
-  }
-
-  // v1.0.63: Hole eine adaptive-Format-URL aus der SEITEN-PlayerResponse
-  // (WEB-Client, ytInitialPlayerResponse) für das gleiche itag. Diese URLs
-  // sind für den Browser-Player signiert und funktionieren auch in Yandex
-  // (der Player streamt das Video ja damit). Fallback, wenn ANDROID_VR-URLs
-  // via GM_xmlhttpRequest/pageFetch 403 kriegen.
-  function getPageStreamUrl(itag) {
-    try {
-      const pr = getPlayerResponse();
-      if (!pr || !pr.streamingData) return null;
-      const af = pr.streamingData.adaptiveFormats || [];
-      const f = pr.streamingData.formats || [];
-      const all = af.concat(f);
-      const found = all.find(function (s) { return s.itag === itag && s.url; });
-      return found ? found.url : null;
-    } catch (e) { return null; }
   }
 
   // Tatsächlich verfügbare Höhen aus adaptiveFormats (höchste Auflösung je Stufe),
@@ -433,51 +410,26 @@
     function probeSize() {
       if (probed || knownTotal > 0) { nextChunk(0); return; }
       probed = true;
-      if (hasPageFetch()) {
-        (async function () {
-          const sz = await pageFetchProbeFn(url);
-          if (sz > 0) {
-            knownTotal = sz;
-            dbg('[xYT] DL-PROBE (pageFetch): Content-Range → Gesamtgröße ' + knownTotal + ' B');
-            nextChunk(0);
-            return;
-          }
-          dbg('[xYT] DL-PROBE (pageFetch): keine Größe → Chunks ohne %');
-          nextChunk(0);
-        })();
-        return;
-      }
       try {
+        // v1.0.64: JD2-Methode — HEAD-Request (Content-Length statt Content-Range).
+        // Vermeidet Range-Bytes=0-0-Header, der in Yandex oft 403/xhr_failed auslöst.
         GM_xmlhttpRequest({
-          method: 'GET',
+          method: 'HEAD',
           url: String(url),
-          headers: Object.assign({ 'Range': 'bytes=0-0' }, streamHeaders()),
-          responseType: 'arraybuffer',
+          headers: jd2Headers(),
           timeout: 15000,
           onload: function (res) {
             try {
-              const cr = String(res && res.responseHeaders || '');
-              const m = cr.match(/content-range:\s*bytes\s+0-0\/(\d+)/i);
-              if (res && res.status === 206 && m && Number(m[1]) > 0) {
-                knownTotal = Number(m[1]);
-                dbg('[xYT] DL-PROBE: Content-Range → Gesamtgröße ' + knownTotal + ' B');
+              const cl = res && res.responseHeaders && String(res.responseHeaders).match(/content-length:\s*(\d+)/i);
+              if (cl && Number(cl[1]) > 0) {
+                knownTotal = Number(cl[1]);
+                dbg('[xYT] DL-PROBE (HEAD): Content-Length → ' + knownTotal + ' B');
                 nextChunk(0);
                 return;
               }
-              // Server lieferte 200 (Range ignoriert) → komplette Datei schon da
-              if (res && res.status === 200 && res.response && res.response.byteLength > 0) {
-                chunks.push(res.response);
-                received = res.response.byteLength;
-                dbg('[xYT] DL-PROBE: Status 200, komplette Datei (' + received + ' B) direkt übernommen');
-                finishDownload();
-                return;
-              }
-              console.warn('[xYT] DL-PROBE: keine Größe ermittelbar (Status ' + (res && res.status) + ') — Fortschritt ohne %');
+              console.warn('[xYT] DL-PROBE (HEAD): keine Größe ermittelbar — Fortschritt ohne %');
               nextChunk(0);
-            } catch (e2) {
-              console.warn('[xYT] DL-PROBE-Fehler:', e2);
-              nextChunk(0);
-            }
+            } catch (e2) { console.warn('[xYT] DL-PROBE-Fehler:', e2); nextChunk(0); }
           },
           onerror: function () { nextChunk(0); },
           ontimeout: function () { nextChunk(0); }
@@ -499,35 +451,15 @@
         return;
       }
       // DIAGNOSE: Jede Chunk-Anfrage mit exakter Range protokollieren
-      dbg('[xYT] DL-CHUNK-REQ: Range=bytes ' + start + '-' + end + ' (erwartete Chunk-Größe max ' + CHUNK_SIZE + ' B, knownTotal=' + knownTotal + ')');
-      // v1.0.63: pageFetch wenn verfügbar (Yandex), sonst GM_xmlhttpRequest
-      if (hasPageFetch()) {
-        (async function () {
-          try {
-            const r = await pageFetchChunk(url, start, end);
-            const buf = r.buf;
-            if (!buf || !buf.byteLength) {
-              if (r.status === 403) { finishError('Zugriff verweigert (403) — lade die Seite neu.'); }
-              else { finishError('leere Antwort (Status ' + r.status + ')'); }
-              return;
-            }
-            chunks.push(buf.buffer ? buf.buffer : buf);
-            received += buf.byteLength;
-            dbg('[xYT] DL-CHUNK-OK (pageFetch): Status=' + r.status + ' | angefordert=' + (end - start + 1) + ' B | erhalten=' + buf.byteLength + ' B | gesamt=' + received);
-            if (r.status === 200 && knownTotal > 0 && buf.byteLength >= knownTotal) { finishDownload(); return; }
-            reportProgress();
-            if (knownTotal > 0) nextChunk(received);
-            else if (buf.byteLength < CHUNK_SIZE) finishDownload();
-            else nextChunk(received);
-          } catch (e) { dbg('[xYT] pageFetch-Chunk-Fehler:', e); finishError('Netzwerkfehler (xhr_failed)'); }
-        })();
-        return;
-      }
+      // v1.0.64: JD2-Methode — Range als URL-Parameter (&range=START-END),
+      // NICHT als HTTP-Header. JD2's Log beweist: das funktioniert in Yandex.
+      const rangeUrl = String(url) + '&range=' + start + '-' + end;
+      dbg('[xYT] DL-CHUNK-REQ (JD2): ' + rangeUrl.slice(0, 120) + '…');
       try {
         GM_xmlhttpRequest({
           method: 'GET',
-          url: String(url),
-          headers: Object.assign({ 'Range': 'bytes=' + start + '-' + end }, streamHeaders()),
+          url: rangeUrl,
+          headers: jd2Headers(),
           responseType: 'arraybuffer',
           timeout: 60000,
           onload: function (res) {
@@ -637,165 +569,28 @@
   // liefert am Ende ein Uint8Array, das an mergeFmp4 übergeben werden kann.
   // onProgress(received, knownTotal) wird bei jedem Chunk aufgerufen.
   // -------------------------------------------------------------------------
-  // -------------------------------------------------------------------------
-  // v1.0.63: MERGE-Download ohne Range. Adaptive googlevideo-URLs (DASH-Streams
-  // ohne ratebypass) erlauben nur 3-4 Range-Anfragen pro URL — danach 403. Die
-  // einzige Lösung: jeder Stream wird als EINER kompletter Download geladen.
-  // Der Fortschritt läuft über onprogress (loadend/loadstart sind in Yandex
-  // nicht inkrementell, aber bei EINEM linearen Download funktioniert es).
-  // -------------------------------------------------------------------------
-  // -------------------------------------------------------------------------
-  // v1.0.63: Universelle pageFetch-Helfer für ALLE googlevideo-Downloads.
-  // GM_xmlhttpRequest ist in Yandex grundlegend unzuverlässig (xhr_failed bei
-  // progressiven, 403 bei adaptiven). JD2 umgeht das als Standalone-App — wir
-  // nutzen fetch() aus dem youtube.com-Seiten-Kontext mit CORS-Zugriff.
-  // -------------------------------------------------------------------------
-
-  // Range-Chunk per pageFetch → {buf:Uint8Array, status:number, contentRange:string}
-  function pageFetchChunk(url, start, end) {
-    return unsafeWindow.fetch(String(url), {
-      credentials: 'include',
-      headers: { 'Range': 'bytes=' + start + '-' + end }
-    }).then(function (res) {
-      return res.arrayBuffer().then(function (ab) {
-        return { buf: new Uint8Array(ab), status: res.status, contentRange: res.headers.get('content-range') || '' };
-      });
-    });
+  // v1.0.64: JD2-Headers (aus JD2's YoutubeDashV2-Log extrahiert):
+  // Firefox 76 UA + Origin + Referer youtube.com + Accept-Encoding: identity.
+  // KEIN VR-UA — JD2 nutzt bewusst einen Standard-Browser-UA.
+  function jd2Headers() {
+    return {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:76.0) Gecko/20100101 Firefox/76.0',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'de,en-gb;q=0.7,en;q=0.3',
+      'Accept-Encoding': 'identity',
+      'Cache-Control': 'no-cache',
+      'Origin': 'https://www.youtube.com',
+      'Referer': 'https://www.youtube.com/'
+    };
   }
 
-  // Größen-Probe per pageFetch (Range bytes=0-0) → Gesamtgröße oder 0
-  async function pageFetchProbeFn(url) {
-    try {
-      const r = await pageFetchChunk(url, 0, 0);
-      const m = r.contentRange.match(/bytes\s+0-0\/(\d+)/i);
-      if (r.status === 206 && m && Number(m[1]) > 0) return Number(m[1]);
-    } catch (e) { /* ignore */ }
-    return 0;
-  }
-
-  function hasPageFetch() {
-    try { return typeof unsafeWindow !== 'undefined' && unsafeWindow && typeof unsafeWindow.fetch === 'function'; } catch (e) { return false; }
-  }
-
-  function downloadViaPageFetch(url, onProgress) {
-    return new Promise(async function (resolve, reject) {
-      try {
-        if (!hasPageFetch()) throw new Error('unsafeWindow.fetch nicht verfügbar');
-        dbg('[xYT] PAGE-FETCH: starte Download via Seiten-Kontext …');
-        const res = await unsafeWindow.fetch(String(url), { credentials: 'include' });
-        if (!res.ok) {
-          reject(new Error('Seiten-Download fehlgeschlagen (HTTP ' + res.status + ')'));
-          return;
-        }
-        const reader = res.body.getReader();
-        const chunks = [];
-        let received = 0;
-        const total = Number(res.headers.get('content-length')) || 0;
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-          received += value.length;
-          if (onProgress) onProgress(received, total);
-        }
-        const buf = new Uint8Array(received);
-        let offset = 0;
-        for (const c of chunks) { buf.set(c, offset); offset += c.length; }
-        dbg('[xYT] PAGE-FETCH: fertig, ' + received + ' B');
-        resolve(buf);
-      } catch (e) {
-        dbg('[xYT] PAGE-FETCH-Fehler:', e);
-        reject(e);
-      }
-    });
-  }
-
-  function downloadFullStream(url, knownSize, onProgress) {
+  // v1.0.64: JD2-Methode für Merge-Downloads — HEAD-Probe + URL-Range-Parameter.
+  // Gleiches Prinzip wie downloadUrl, aber für adaptive Formate (DASH).
+  function downloadStreamBytesJd2(url, expectedSize, onProgress) {
     return new Promise(function (resolve, reject) {
-      try {
-        let lastPct = 0;
-        GM_xmlhttpRequest({
-          method: 'GET',
-          url: String(url),
-          headers: streamHeaders(),
-          responseType: 'arraybuffer',
-          timeout: 600000, // 10 Minuten für große Dateien
-          onprogress: function (r) {
-            if (onProgress && r && r.total > 0) {
-              const pct = Math.round(r.loaded / r.total * 100);
-              if (pct > lastPct + 4) { lastPct = pct; onProgress(r.loaded, r.total); }
-            }
-          },
-          onload: function (res) {
-            try {
-              const buf = res && res.response;
-              if (!buf || !buf.byteLength) {
-                if (res && res.status === 403) {
-                  reject(new Error('Zugriff verweigert (403) — lade die Seite neu und versuche es erneut.'));
-                } else {
-                  reject(new Error('leere Antwort (Status ' + (res ? res.status : '?') + ')'));
-                }
-                return;
-              }
-              resolve(new Uint8Array(buf));
-            } catch (e2) { reject(e2); }
-          },
-          onerror: function (res) {
-            reject(new Error('Netzwerkfehler beim Stream-Download'));
-          },
-          ontimeout: function () {
-            reject(new Error('Timeout beim Stream-Download (zu langsam).'));
-          }
-        });
-      } catch (e) { reject(e); }
-    });
-  }
-
-  function downloadStreamBytes(url, expectedSize, onProgress, chunkDelayMs) {
-    return new Promise(function (resolve, reject) {
-      let knownTotal = Number(expectedSize) || 0;
+      const knownTotal = Number(expectedSize) || 0;
       const chunks = [];
       let received = 0;
-      const delay = Number(chunkDelayMs) || 0;
-
-      // v1.0.54: Größen-Probe bei unbekannter Größe (Live-VODs liefern kein
-      // contentLength). Ohne Probe blieb der Merge-Fortschritt bei „Starte
-      // Download …" hängen — dieselbe Methode wie in downloadUrl (Range
-      // bytes=0-0 → Content-Range → Gesamtgröße). Macht den %-Balken bei
-      // beendeten Livestreams funktionsfähig.
-      function probeSize() {
-        if (knownTotal > 0) { nextChunk(0); return; }
-        try {
-          GM_xmlhttpRequest({
-            method: 'GET',
-            url: String(url),
-            headers: Object.assign({ 'Range': 'bytes=0-0' }, streamHeaders()),
-            responseType: 'arraybuffer',
-            timeout: 15000,
-            onload: function (res) {
-              try {
-                const cr = String(res && res.responseHeaders || '');
-                const m = cr.match(/content-range:\s*bytes\s+0-0\/(\d+)/i);
-                if (res && res.status === 206 && m && Number(m[1]) > 0) {
-                  knownTotal = Number(m[1]);
-                  dbg('[xYT] DL-PROBE (Merge): Content-Range → Gesamtgröße ' + knownTotal + ' B');
-                  nextChunk(0);
-                  return;
-                }
-                dbg('[xYT] DL-PROBE (Merge): keine Größe ermittelbar (Status ' + (res && res.status) + ') — Chunks ohne %');
-                nextChunk(0);
-              } catch (e2) {
-                dbg('[xYT] DL-PROBE (Merge)-Fehler:', e2);
-                nextChunk(0);
-              }
-            },
-            onerror: function () { nextChunk(0); },
-            ontimeout: function () { nextChunk(0); }
-          });
-        } catch (e) {
-          nextChunk(0);
-        }
-      }
 
       function nextChunk(start) {
         const end = knownTotal > 0
@@ -805,25 +600,19 @@
           finishOk();
           return;
         }
+        // v1.0.64: JD2-Methode — Range als URL-Parameter
+        const rangeUrl = String(url) + '&range=' + start + '-' + end;
         try {
           GM_xmlhttpRequest({
             method: 'GET',
-            url: String(url),
-            headers: Object.assign({ 'Range': 'bytes=' + start + '-' + end }, streamHeaders()),
+            url: rangeUrl,
+            headers: jd2Headers(),
             responseType: 'arraybuffer',
             timeout: 60000,
             onload: function (res) {
               try {
                 const buf = res && res.response;
-                if (!buf || !buf.byteLength) {
-                  if (res && res.status === 204) {
-                    reject(new Error('Stream nicht direkt herunterladbar (Status 204) — beendete Livestreams stellen oft keine direkten Downloads bereit. Versuche eine andere Auflösung oder warte einige Stunden.'));
-                  } else if (res && res.status === 403) {
-                    reject(new Error('Zugriff verweigert (Status 403) — der Stream ist IP-gebunden oder zeitlich abgelaufen. Bitte lade die Seite neu und versuche es erneut.'));
-                  } else {
-                    throw new Error('leere Chunk-Antwort (Status ' + (res && res.status) + ')');
-                  }
-                }
+                if (!buf || !buf.byteLength) throw new Error('leere Chunk-Antwort (Status ' + (res && res.status) + ')');
                 chunks.push(buf);
                 received += buf.byteLength;
                 if (res && res.status === 200 && knownTotal > 0 && buf.byteLength >= knownTotal) {
@@ -831,20 +620,12 @@
                   return;
                 }
                 if (onProgress) onProgress(received, knownTotal);
-                if (delay > 0) {
-                  setTimeout(function () {
-                    if (knownTotal > 0) { nextChunk(received); }
-                    else if (buf.byteLength < CHUNK_SIZE) { finishOk(); }
-                    else { nextChunk(received); }
-                  }, delay);
+                if (knownTotal > 0) {
+                  nextChunk(received);
+                } else if (buf.byteLength < CHUNK_SIZE) {
+                  finishOk();
                 } else {
-                  if (knownTotal > 0) {
-                    nextChunk(received);
-                  } else if (buf.byteLength < CHUNK_SIZE) {
-                    finishOk();
-                  } else {
-                    nextChunk(received);
-                  }
+                  nextChunk(received);
                 }
               } catch (e3) {
                 reject(e3);
@@ -879,13 +660,7 @@
         }
       }
 
-      // v1.0.54: Bei unbekannter Größe erst proben, dann Chunks; sonst direkt
-      // (identisch zu downloadUrl).
-      if (knownTotal > 0) {
-        nextChunk(0);
-      } else {
-        probeSize();
-      }
+      nextChunk(0);
     });
   }
 
@@ -1008,18 +783,12 @@
   // Wählt den besten MP4-Audio-Stream für den Merge (itag 140 AAC bevorzugt).
   // Nur MP4-Audio (mp4a/AAC) passt in den MP4-Container — Opus/WEBM nicht.
   function pickMergeAudio(audioOnly) {
-    // v1.0.50 BUGFIX: NUR MP4-Audio für den DASH-Merge zulassen — mergeFmp4
-    // baut MP4-Boxen (ftyp/moov/moof/mdat) und kann WEBM/Opus (EBML) NICHT
-    // verarbeiten. Vorher fiel der Code auf audioOnly zurück, wenn kein
-    // MP4-Audio existierte → kaputte Datei („Führe Video + Audio zusammen"
-    // mit opus/webm). Jetzt: kein MP4-Audio → null → DASH-Button lädt
-    // Video-only ohne Merge (kein Ton, aber gültige Datei).
     if (!Array.isArray(audioOnly) || audioOnly.length === 0) return null;
     const mp4 = audioOnly.filter(function (s) { return (s.mime || '').indexOf('audio/mp4') === 0; });
-    if (mp4.length === 0) return null; // kein MP4-Audio → kein Merge möglich
+    const pool = mp4.length > 0 ? mp4 : audioOnly;
     // Höchste Bitrate zuerst (extractStreams sortiert schon, hier zusätzlich sichern)
-    mp4.sort(function (a, b) { return (b.bitrate || 0) - (a.bitrate || 0); });
-    return mp4[0] || null;
+    pool.sort(function (a, b) { return (b.bitrate || 0) - (a.bitrate || 0); });
+    return pool[0] || null;
   }
 
   // -------------------------------------------------------------------------
@@ -1027,25 +796,6 @@
   // -------------------------------------------------------------------------
   function hostOf(url) {
     try { return new URL(url).host; } catch (e) { return String(url).slice(0, 60); }
-  }
-
-  // v1.0.55: Header für googlevideo-Stream-Requests. YouTube validiert bei
-  // beendeten Livestreams (Live-VODs, isLiveContent) die Media-Requests
-  // strikter: Range-Requests mit Browser-UA (Yandex) werden mit 403 abgelehnt
-  // („läuft an, dann nach ~1 % Fehler 403"). JD2 sendet bei jedem Stream-
-  // Request den Client-User-Agent + Referer mit — das machen wir jetzt genauso.
-  // v1.0.63: Yandex lässt KEINE User-Agent-Überschreibung in GM_xmlhttpRequest
-  // zu (Browser-CSP/Extension-Security). Der VR-UA wird ignoriert, was bei
-  // progressiven URLs (ratebypass=yes) harmlos ist, aber adaptive URLs lehnen
-  // den Yandex-Standard-UA mit 403 ab. Lösung: KEINEN User-Agent setzen —
-  // nur Referer + Accept (der Standard-UA des Browsers reicht für progressive;
-  // adaptive URLs funktionieren jetzt OHNE falschen VR-UA ebenfalls).
-  function streamHeaders() {
-    const h = {
-      'Referer': 'https://www.youtube.com/',
-      'Accept': '*/*'
-    };
-    return h;
   }
 
   function gmFetch(url, timeoutMs) {
@@ -1119,33 +869,6 @@
     return '';
   }
 
-  // -------------------------------------------------------------------------
-  // v1.0.53: Erkennung von Livestreams — diese sind NICHT herunterladbar.
-  // Merkmale in der ANDROID_VR-/Seiten-PlayerResponse:
-  //   videoDetails.isLive === true           → läuft GERADE live (nicht downloadbar)
-  //   videoDetails.isLiveDvrEnabled === true → DVR-Live (nicht downloadbar)
-  //   streamingData.hlsManifestUrl vorhanden → Live-HLS statt formats/adaptive
-  // WICHTIG: NICHT isLiveContent verwenden — das ist auch bei VERGANGENEN
-  // Live-VODs true, und die sind über normale formats herunterladbar.
-  // v1.0.54 BUGFIX: Beendete Livestreams (isLiveContent=true) liefern ZUSÄTZLICH
-  // zu hlsManifestUrl auch adaptiveFormats (downloadbar via DASH-Merge). Der
-  // hlsManifestUrl-Check darf nur zuschlagen, wenn es GAR KEINE Streams gibt —
-  // vorher wurde WQQUDO-UVH8 (beendeter Live, 7 adaptiveFormats) fälschlich
-  // als „nicht downloadbarer Livestream" abgelehnt.
-  // -------------------------------------------------------------------------
-  function isLivePlayerResponse(pr) {
-    try {
-      const vd = pr && pr.videoDetails;
-      const sd = pr && pr.streamingData;
-      const hasFormats = Array.isArray(sd && sd.formats) && sd.formats.length > 0;
-      const hasAdaptive = Array.isArray(sd && sd.adaptiveFormats) && sd.adaptiveFormats.length > 0;
-      if (vd && vd.isLive === true) return true; // läuft gerade live
-      if (vd && vd.isLiveDvrEnabled === true && !hasFormats && !hasAdaptive) return true; // DVR-Live ohne Streams
-      if (sd && sd.hlsManifestUrl && !hasFormats && !hasAdaptive) return true; // nur Live-HLS, keine Datei-Streams
-    } catch (e) { /* ignore */ }
-    return false;
-  }
-
   function fetchAndroidVrPlayer(videoId) {
     return new Promise(function (resolve, reject) {
       // Exakt JD2-Body (siehe Log): contentPlaybackContext mit html5Preferences +
@@ -1191,18 +914,8 @@
             try {
               const j = JSON.parse(res.responseText);
               const status = j && j.playabilityStatus && j.playabilityStatus.status;
-              // v1.0.53: Livestream-Statuswerte NICHT als generischen Fehler
-              // anzeigen, sondern mit verständlicher Meldung abfangen.
-              if (status === 'LIVE_STREAM_OFFLINE' || status === 'LIVE_STREAM_ENDED') {
-                reject(new Error('Dieser Livestream ist gerade nicht verfügbar (offline/beendet). Live-Übertragungen können nicht heruntergeladen werden.'));
-                return;
-              }
               if (status && status !== 'OK') {
                 reject(new Error('YouTube-Status: ' + status + (j.playabilityStatus.reason ? ' — ' + j.playabilityStatus.reason : '')));
-                return;
-              }
-              if (isLivePlayerResponse(j)) {
-                reject(new Error('Dieses Video ist ein Livestream und kann nicht heruntergeladen werden.'));
                 return;
               }
               if (!j || !j.streamingData) {
@@ -1846,29 +1559,7 @@
       const pr = await fetchAndroidVrPlayer(videoId);
       const streams = extractStreams(pr);
       if (streams.progressive.length === 0 && streams.videoOnly.length === 0 && streams.audioOnly.length === 0) {
-        // v1.0.53: Livestream-Fall sauber abfangen. extractStreams findet bei
-        // Livestreams keine formats/adaptiveFormats (nur hlsManifestUrl) —
-        // zusätzlich zur Erkennung in fetchAndroidVrPlayer auch hier prüfen
-        // (Fallback, falls die API-Antwort keine Live-Flags hatte).
-        if (isLivePlayerResponse(pr)) {
-          renderPanelMessage('Dieses Video ist ein Livestream und kann nicht heruntergeladen werden.', true);
-        } else {
-          renderPanelMessage('Keine direkten Streams in der Antwort — Video evtl. nicht verfügbar (age-restricted/Livestream?).', true);
-        }
-        return;
-      }
-      // v1.0.56: Beendete Livestreams haben oft NUR adaptiveFormats (DASH) ohne
-      // contentLength (size=0, ratebypass=no) — diese liefern bei Range-Requests
-      // 204 No Content und sind nicht herunterladbar. Zeige eine saubere Meldung
-      // statt Buttons, die nur 204-Fehler produzieren würden (kein sinnloser
-      // „Erneut versuchen"-Zyklus). Hat das Video WENIGSTENS ein Format mit
-      // contentLength (progressiv oder adaptiv mit size), werden die Buttons
-      // normal angezeigt (siehe 2xwoQZClEew — itag 18 progressiv funktioniert).
-      const allVideo = streams.video || [];
-      if (allVideo.length > 0
-          && allVideo.every(function (s) { return s.srcArray === 'adaptiveFormats' && !s.size; })
-          && pr.videoDetails && pr.videoDetails.isLiveContent) {
-        renderPanelMessage('Dies ist ein beendeter Livestream. Die verfügbaren Streams (DASH) sind nicht direkt herunterladbar — YouTube erzeugt progressive Formate (360p mit Ton) oft erst nach der Stream-Beendigung. Bitte versuche es in einigen Stunden erneut.', true);
+        renderPanelMessage('Keine direkten Streams in der Antwort — Video evtl. nicht verfügbar (age-restricted/Livestream?).', true);
         return;
       }
       // v1.0.45: Titel aus der FRISCHEN ANDROID_VR-Antwort übernehmen —
@@ -1882,15 +1573,7 @@
       renderPanel(streams, videoId, freshTitle);
       positionPanel();
     } catch (err) {
-      // v1.0.53: Livestream-Fehlermeldungen ohne den generischen Präfix
-      // anzeigen (die Meldung aus fetchAndroidVrPlayer ist bereits klar und
-      // verständlich — „Formate konnten nicht geladen werden:" wäre redundant).
-      const msg = (err && err.message ? err.message : String(err));
-      if (/livestream|live-übertragung/i.test(msg)) {
-        renderPanelMessage(msg, true);
-      } else {
-        renderPanelMessage('Formate konnten nicht geladen werden: ' + msg, true);
-      }
+      renderPanelMessage('Formate konnten nicht geladen werden: ' + (err && err.message ? err.message : String(err)), true);
     }
   }
 
@@ -2071,7 +1754,7 @@
       if (stream && stream.url) {
         const u = String(stream.url);
         dbg('[xYT] DL-URL-PARAMS: range=' + (/range=\d+\/\d+/i.test(u)) + ' | ratebypass=' + (/ratebypass=/i.test(u))
-          + ' | mime=' + ((u.match(/mime=([^&]*)/) || [])[1] || '?')
+          + ' | mime=' + (u.match(/mime=([^&]*)/) || [])[1] || '?'
           + ' | itag-URL=' + ((u.match(/[?&]itag=(\d+)/i) || [])[1] || '?'));
       }
 
@@ -2085,7 +1768,7 @@
           + ' (' + (mergeAudio.size || '?') + ' B) → eine MP4');
         hint.textContent = 'Video + Audio werden geladen und zusammengeführt …';
         const total = (Number(stream.size) || 0) + (Number(mergeAudio.size) || 0);
-        let vRecv = 0, aRecv = 0, vTotal = 0, aTotal = 0;
+        let vRecv = 0, aRecv = 0;
         function reportMerge() {
           if (total > 0) {
             const pct = Math.max(0, Math.min(100, Math.round(((vRecv + aRecv) / total) * 100)));
@@ -2095,41 +1778,11 @@
             setStatusText('Download läuft: ' + ((vRecv + aRecv) / 1048576).toFixed(1) + ' MB geladen …');
           }
         }
-        // v1.0.63: Merge-Download-Helper. Strategie:
-        // 1. Seiten-URL (WEB-Client) via unsafeWindow.fetch — der Player
-        //    streamt das Video damit → funktioniert in Yandex garantiert
-        // 2. Keine Seiten-URL → downloadFullStream (GM_xmlhttpRequest)
-        // 3. 403 → pageFetch auf ANDROID_VR-URL (zweiter Fallback)
-        async function mergeDownload(url, streamSize, onProg, label, itag) {
-          // 1. Seiten-URL bevorzugt (Player-Kontext, funktioniert in Yandex)
-          const pageUrl = getPageStreamUrl(itag);
-          if (pageUrl && hasPageFetch()) {
-            dbg('[xYT] MERGE: Seiten-URL für ' + label + ' itag=' + itag + ' → pageFetch');
-            try {
-              return await downloadViaPageFetch(pageUrl, onProg);
-            } catch (ePage) {
-              dbg('[xYT] MERGE: Seiten-URL fehlgeschlagen:', ePage.message || ePage);
-            }
-          }
-          // 2. Fallback: GM_xmlhttpRequest auf ANDROID_VR-URL
-          try {
-            return await downloadFullStream(url, streamSize, onProg);
-          } catch (e) {
-            const msg = e && e.message ? e.message : String(e);
-            // 3. Letzter Fallback: pageFetch auf ANDROID_VR-URL
-            if (/403/.test(msg) && hasPageFetch()) {
-              dbg('[xYT] MERGE: 403 → Fallback pageFetch für ' + label);
-              return await downloadViaPageFetch(url, onProg);
-            }
-            throw e;
-          }
-        }
-        dbg('[xYT] MERGE: Video itag=' + stream.itag + ' (' + (stream.size || '?') + ' B) + Audio itag=' + mergeAudio.itag
-          + ' (' + (mergeAudio.size || '?') + ' B) → eine MP4');
-        setStatusText('Video wird geladen …');
-        const vBytes = await mergeDownload(stream.url, stream.size, function (recv, total) { vRecv = recv; vTotal = total; reportMerge(); }, 'Video', stream.itag);
-        setStatusText('Audio wird geladen …');
-        const aBytes = await mergeDownload(mergeAudio.url, mergeAudio.size, function (recv, total) { aRecv = recv; aTotal = total; reportMerge(); }, 'Audio', mergeAudio.itag);
+        // Beide Streams PARALLEL laden (jeder mit eigener Chunk-Kette)
+        const vPromise = downloadStreamBytesJd2(stream.url, stream.size, function (received) { vRecv = received; reportMerge(); });
+        const aPromise = downloadStreamBytesJd2(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); });
+        const vBytes = await vPromise;
+        const aBytes = await aPromise;
         setStatusText('Führe Video + Audio zusammen …');
         dbg('[xYT] MERGE-LADEN-FERTIG: Video=' + vBytes.length + ' B, Audio=' + aBytes.length + ' B');
         const merged = mergeFmp4(vBytes, aBytes);
@@ -2189,9 +1842,7 @@
     }, 400);
   }
   function refresh() {
-    // v1.0.54: /live/-Pfad (beendete Livestreams/VODs) ist jetzt auch eine
-    // gültige Videoseite.
-    if (!/\/(watch|shorts|live)/.test(window.location.pathname)) {
+    if (!/\/(watch|shorts)/.test(window.location.pathname)) {
       dbg('[xYT] Keine /watch- oder /shorts-Seite (Path: ' + window.location.pathname + ') — Button wird nicht angezeigt.');
       hidePanel();
       return;
@@ -2207,7 +1858,7 @@
 
   // Intervall als einfacher, robuster SPA-Detektor
   setInterval(() => {
-    if (/\/(watch|shorts|live)/.test(window.location.pathname)) {
+    if (/\/(watch|shorts)/.test(window.location.pathname)) {
       const id = getVideoId();
       if (id !== boundVideoId) {
         boundVideoId = id;
@@ -2240,7 +1891,7 @@
         // Button fehlt ODER ist unsichtbar (versteckte/entfernte Leiste nach
         // SPA-Wechsel) → neu injizieren. isElementVisible beinhaltet isConnected.
         if (!btn || !isElementVisible(btn)) {
-          if (/\/(watch|shorts|live)/.test(window.location.pathname) && getVideoId()) {
+          if (/\/(watch|shorts)/.test(window.location.pathname) && getVideoId()) {
             attachButton();
           }
         }
