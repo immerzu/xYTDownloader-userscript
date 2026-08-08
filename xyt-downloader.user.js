@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.66
+// @version      1.0.67
 // @description  One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound.
 // @author       Ede
 // @match        *://www.youtube.com/*
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.66';
+  const MY_VERSION = '1.0.67';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -1754,43 +1754,51 @@
       }
 
       // ===================================================================
-      // DASH-MERGE-PFAD: Video-only + Audio-only → zwei separate Dateien via
-      // GM_download. In-Browser-Merge (GM_xmlhttpRequest → downloadStreamBytes
-      // → mergeFmp4) ist in Yandex seit 08.08.2026 blockiert (403/xhr_failed).
-      // GM_download nutzt den Browser-eigenen Download-Mechanismus, der nicht
-      // von Yandex' GM_xmlhttpRequest-Blockade betroffen ist.
+      // DASH-MERGE-PFAD: Video-only + Audio-only → zwei separate Dateien.
+      // In Yandex sind GM_xmlhttpRequest UND GM_download blockiert. Einzige
+      // verbleibende Methode: natives <a download>-Element im Seiten-DOM.
       if (kind === 'video' && mergeAudio && stream && stream.url && mergeAudio.url) {
-        dbg('[xYT] MERGE-GM_DOWNLOAD: Video itag=' + stream.itag + ' + Audio itag=' + mergeAudio.itag + ' → zwei Dateien');
-        hint.textContent = 'Video + Audio werden separat gespeichert.';
         const videoFilename = getSafeFilename(title || videoId, 'mp4');
         const audioFilename = getSafeFilename(title || videoId, 'm4a');
         try {
-          GM_download({ url: stream.url, name: 'Video_' + videoFilename, saveAs: false,
-            onerror: function (e) { console.warn('[xYT] GM_download Video-Fehler:', e); }
-          });
-          GM_download({ url: mergeAudio.url, name: 'Audio_' + audioFilename, saveAs: false,
-            onerror: function (e) { console.warn('[xYT] GM_download Audio-Fehler:', e); }
+          [ { url: stream.url, name: 'Video_' + videoFilename },
+            { url: mergeAudio.url, name: 'Audio_' + audioFilename }
+          ].forEach(function (f) {
+            const a = document.createElement('a');
+            a.href = f.url;
+            a.download = f.name;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function () { a.remove(); }, 4000);
           });
           setStatusText('2 Dateien werden gespeichert (Video + Audio getrennt)');
-          setBarProgress(100);
-          autoClosePanelAfter(3000);
-          hint.textContent = 'Video- und Audio-Datei werden im Download-Ordner gespeichert. Mit ffmpeg mergen: ffmpeg -i Video_... -i Audio_... -c copy output.mp4';
-        } catch (eGM) {
-          throw new Error('GM_download fehlgeschlagen: ' + (eGM && eGM.message ? eGM.message : String(eGM)));
+          hint.textContent = 'Video- und Audio-Datei werden im Download-Ordner gespeichert.';
+        } catch (eA) {
+          // Letzter Fallback: window.open
+          window.open(stream.url);
+          window.open(mergeAudio.url);
+          setStatusText('2 Dateien via Fallback (Video + Audio getrennt)');
+          hint.textContent = 'Video- und Audio-Datei werden im Download-Ordner gespeichert.';
         }
         return;
       }
 
-      // v1.0.66: GM_download statt downloadUrl (GM_xmlhttpRequest in Yandex blockiert)
+      // v1.0.67: Natives <a download>-Element statt GM_download (auch blockiert).
+      // Keine Extension-API — der Browser-Kern lädt die URL direkt herunter.
       try {
-        GM_download({ url: stream.url, name: filename, saveAs: false,
-          onerror: function (e) { console.warn('[xYT] GM_download Fehler:', e); }
-        });
+        const a = document.createElement('a');
+        a.href = stream.url;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () { a.remove(); }, 4000);
         setStatusText('Download gestartet: ' + filename);
         st.className = 'xyt-dl-status';
         hint.textContent = 'Datei wird im Browser-Download-Ordner gespeichert.';
-      } catch (eGD) {
-        fallbackDownload(stream.url, filename);
+      } catch (eA) {
+        window.open(stream.url);
         setStatusText('Download via Fallback: ' + filename);
         st.className = 'xyt-dl-status';
         hint.textContent = 'Datei wird im Browser-Download-Ordner gespeichert.';
