@@ -916,3 +916,15 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
   3. ANDROID_VR-URL via `downloadViaPageFetch` (letzter Fallback)
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.62.user.js` (MD5 `75738bbde34b9128eb54dace79a0547c`, cmp-identisch). Syntax OK.
+
+## 37. v1.0.63 — BREAKING: ALLE googlevideo-Downloads über pageFetch (nicht mehr GM_xmlhttpRequest)
+
+**Stand:** 2026-08-08 — Nach mehreren Yandex-spezifischen 403/xhr_failed-Fehlern bei googlevideo-Downloads (sowohl adaptiv als auch progressiv) wurde klar: GM_xmlhttpRequest funktioniert in Yandex nicht für googlevideo-URLs (xhr_failed). JD2 umgeht das als Standalone-App (keine Browser-Restrictions).
+
+**Lösung (v1.0.63):**
+- **`pageFetchChunk(url, start, end)`**: Range-Chunk über `unsafeWindow.fetch()` (Seiten-Kontext)
+- **`pageFetchProbeFn(url)`**: Größen-Probe via pageFetch (bytes=0-0 → Content-Range)
+- **`downloadUrl`**: verwendet JETZT IMMER pageFetch-Chunks, wenn `hasPageFetch()` true ist (Yandex), GM_xmlhttpRequest nur als Fallback
+- **Ganzer Chunking-Flow** (probeSize + nextChunk + reportProgress) bleibt gleich — nur der Transport-Layer wurde von GM_xmlhttpRequest auf pageFetch umgestellt
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.63.user.js` (MD5 `aca71c2a694fc05c9927a4e73473aa10`, cmp-identisch). Syntax OK.

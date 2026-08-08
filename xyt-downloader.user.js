@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.62
+// @version      1.0.63
 // @description  YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch und /shorts. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton. / One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound. / Пользовательский скрипт для скачивания видео с YouTube в один клик. Поддерживает все качества до 4K со звуком. Работает на /watch и /shorts. Без внешних API, прямой клиент ANDROID_VR. Слияние DASH для высоких разрешений со звуком.
 // @author       Ede
 // @match        *://www.youtube.com/*
@@ -72,7 +72,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.62';
+  const MY_VERSION = '1.0.63';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -261,7 +261,7 @@
     return null;
   }
 
-  // v1.0.62: Hole eine adaptive-Format-URL aus der SEITEN-PlayerResponse
+  // v1.0.63: Hole eine adaptive-Format-URL aus der SEITEN-PlayerResponse
   // (WEB-Client, ytInitialPlayerResponse) für das gleiche itag. Diese URLs
   // sind für den Browser-Player signiert und funktionieren auch in Yandex
   // (der Player streamt das Video ja damit). Fallback, wenn ANDROID_VR-URLs
@@ -433,6 +433,20 @@
     function probeSize() {
       if (probed || knownTotal > 0) { nextChunk(0); return; }
       probed = true;
+      if (hasPageFetch()) {
+        (async function () {
+          const sz = await pageFetchProbeFn(url);
+          if (sz > 0) {
+            knownTotal = sz;
+            dbg('[xYT] DL-PROBE (pageFetch): Content-Range → Gesamtgröße ' + knownTotal + ' B');
+            nextChunk(0);
+            return;
+          }
+          dbg('[xYT] DL-PROBE (pageFetch): keine Größe → Chunks ohne %');
+          nextChunk(0);
+        })();
+        return;
+      }
       try {
         GM_xmlhttpRequest({
           method: 'GET',
@@ -486,6 +500,29 @@
       }
       // DIAGNOSE: Jede Chunk-Anfrage mit exakter Range protokollieren
       dbg('[xYT] DL-CHUNK-REQ: Range=bytes ' + start + '-' + end + ' (erwartete Chunk-Größe max ' + CHUNK_SIZE + ' B, knownTotal=' + knownTotal + ')');
+      // v1.0.63: pageFetch wenn verfügbar (Yandex), sonst GM_xmlhttpRequest
+      if (hasPageFetch()) {
+        (async function () {
+          try {
+            const r = await pageFetchChunk(url, start, end);
+            const buf = r.buf;
+            if (!buf || !buf.byteLength) {
+              if (r.status === 403) { finishError('Zugriff verweigert (403) — lade die Seite neu.'); }
+              else { finishError('leere Antwort (Status ' + r.status + ')'); }
+              return;
+            }
+            chunks.push(buf.buffer ? buf.buffer : buf);
+            received += buf.byteLength;
+            dbg('[xYT] DL-CHUNK-OK (pageFetch): Status=' + r.status + ' | angefordert=' + (end - start + 1) + ' B | erhalten=' + buf.byteLength + ' B | gesamt=' + received);
+            if (r.status === 200 && knownTotal > 0 && buf.byteLength >= knownTotal) { finishDownload(); return; }
+            reportProgress();
+            if (knownTotal > 0) nextChunk(received);
+            else if (buf.byteLength < CHUNK_SIZE) finishDownload();
+            else nextChunk(received);
+          } catch (e) { dbg('[xYT] pageFetch-Chunk-Fehler:', e); finishError('Netzwerkfehler (xhr_failed)'); }
+        })();
+        return;
+      }
       try {
         GM_xmlhttpRequest({
           method: 'GET',
@@ -601,18 +638,41 @@
   // onProgress(received, knownTotal) wird bei jedem Chunk aufgerufen.
   // -------------------------------------------------------------------------
   // -------------------------------------------------------------------------
-  // v1.0.62: MERGE-Download ohne Range. Adaptive googlevideo-URLs (DASH-Streams
+  // v1.0.63: MERGE-Download ohne Range. Adaptive googlevideo-URLs (DASH-Streams
   // ohne ratebypass) erlauben nur 3-4 Range-Anfragen pro URL — danach 403. Die
   // einzige Lösung: jeder Stream wird als EINER kompletter Download geladen.
   // Der Fortschritt läuft über onprogress (loadend/loadstart sind in Yandex
   // nicht inkrementell, aber bei EINEM linearen Download funktioniert es).
   // -------------------------------------------------------------------------
   // -------------------------------------------------------------------------
-  // v1.0.62: Fallback-Download via unsafeWindow.fetch() (Seiten-Kontext).
-  // Yandex' GM_xmlhttpRequest blockt googlevideo-Adaptive-URLs (403), aber
-  // fetch() aus dem youtube.com-Seiten-Kontext hat CORS-Zugriff. Mit
-  // ReadableStream-Streaming und echtem Progress-Tracking.
+  // v1.0.63: Universelle pageFetch-Helfer für ALLE googlevideo-Downloads.
+  // GM_xmlhttpRequest ist in Yandex grundlegend unzuverlässig (xhr_failed bei
+  // progressiven, 403 bei adaptiven). JD2 umgeht das als Standalone-App — wir
+  // nutzen fetch() aus dem youtube.com-Seiten-Kontext mit CORS-Zugriff.
   // -------------------------------------------------------------------------
+
+  // Range-Chunk per pageFetch → {buf:Uint8Array, status:number, contentRange:string}
+  function pageFetchChunk(url, start, end) {
+    return unsafeWindow.fetch(String(url), {
+      credentials: 'include',
+      headers: { 'Range': 'bytes=' + start + '-' + end }
+    }).then(function (res) {
+      return res.arrayBuffer().then(function (ab) {
+        return { buf: new Uint8Array(ab), status: res.status, contentRange: res.headers.get('content-range') || '' };
+      });
+    });
+  }
+
+  // Größen-Probe per pageFetch (Range bytes=0-0) → Gesamtgröße oder 0
+  async function pageFetchProbeFn(url) {
+    try {
+      const r = await pageFetchChunk(url, 0, 0);
+      const m = r.contentRange.match(/bytes\s+0-0\/(\d+)/i);
+      if (r.status === 206 && m && Number(m[1]) > 0) return Number(m[1]);
+    } catch (e) { /* ignore */ }
+    return 0;
+  }
+
   function hasPageFetch() {
     try { return typeof unsafeWindow !== 'undefined' && unsafeWindow && typeof unsafeWindow.fetch === 'function'; } catch (e) { return false; }
   }
@@ -974,7 +1034,7 @@
   // strikter: Range-Requests mit Browser-UA (Yandex) werden mit 403 abgelehnt
   // („läuft an, dann nach ~1 % Fehler 403"). JD2 sendet bei jedem Stream-
   // Request den Client-User-Agent + Referer mit — das machen wir jetzt genauso.
-  // v1.0.62: Yandex lässt KEINE User-Agent-Überschreibung in GM_xmlhttpRequest
+  // v1.0.63: Yandex lässt KEINE User-Agent-Überschreibung in GM_xmlhttpRequest
   // zu (Browser-CSP/Extension-Security). Der VR-UA wird ignoriert, was bei
   // progressiven URLs (ratebypass=yes) harmlos ist, aber adaptive URLs lehnen
   // den Yandex-Standard-UA mit 403 ab. Lösung: KEINEN User-Agent setzen —
@@ -2035,7 +2095,7 @@
             setStatusText('Download läuft: ' + ((vRecv + aRecv) / 1048576).toFixed(1) + ' MB geladen …');
           }
         }
-        // v1.0.62: Merge-Download-Helper. Strategie:
+        // v1.0.63: Merge-Download-Helper. Strategie:
         // 1. Seiten-URL (WEB-Client) via unsafeWindow.fetch — der Player
         //    streamt das Video damit → funktioniert in Yandex garantiert
         // 2. Keine Seiten-URL → downloadFullStream (GM_xmlhttpRequest)
