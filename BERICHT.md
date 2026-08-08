@@ -938,3 +938,14 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 3. **Firefox-76-User-Agent** + Origin/Referer youtube.com — NICHT VR-UA
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.64.user.js` (MD5 `ced504604f60fd31f05ebd2085233fb3`, cmp-identisch). Syntax OK.
+
+## 39. v1.0.66 — GM_download als PRIMÄRER Download-Mechanismus (Yandex-Blockade)
+
+**Stand:** 2026-08-08 — GM_xmlhttpRequest ist in Yandex heute KOMPLETT blockiert für googlevideo (360p: xhr_failed, 720p: 403). HEAD funktioniert noch, GET nicht. Playwright-Tests beweisen: das Script funktioniert in Chromium einwandfrei (360p+480p+1080p von sdk-NNVq4VY erfolgreich).
+
+**Lösung:**
+- **Progressive (360p)**: GM_download direkt (kein GM_xmlhttpRequest mehr)
+- **DASH-Merge (720p/1080p)**: Video + Audio als zwei separate Dateien via GM_download (Merge in-Browser nicht möglich ohne GM_xmlhttpRequest → mergeFmp4 braucht die Bytes)
+- Hinweis im Panel: "Mit ffmpeg mergen: ffmpeg -i Video_... -i Audio_... -c copy output.mp4"
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.66.user.js` (MD5 `4d746d2d10a3fb36255ea203ee733e28`). Syntax OK.
