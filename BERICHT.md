@@ -890,3 +890,15 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 **Änderung:** `streamHeaders()` sendet jetzt NUR `Referer: https://www.youtube.com/` und `Accept: */*` — KEINEN User-Agent mehr. Der Browser-Standard-UA reicht für progressive und funktioniert auch für adaptive (kein VR-UA ≠ Yandex-UA-Konflikt).
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.60.user.js` (MD5 `4943dfa3e5ef5da54a82af6bd873f6e1`, cmp-identisch). Syntax OK.
+
+## 35. v1.0.61 — FEATURE: pageFetch-Fallback für Yandex (unsafeWindow.fetch statt GM_xmlhttpRequest)
+
+**Stand:** 2026-08-08 — Adaptive googlevideo-URLs (DASH) scheiterten in Yandex konstant mit 403, egal ob Range, Full-Download, mit/ohne User-Agent. Das Problem ist Yandex-spezifisch: GM_xmlhttpRequest kann bestimmte Cross-Origin-Requests zu googlevideo nicht ausführen.
+
+**Lösung (v1.0.61):**
+- **`@grant unsafeWindow`** neu im Metablock
+- **`downloadViaPageFetch`**: Nutzt `unsafeWindow.fetch()` aus dem Seiten-Kontext (youtube.com). googlevideo erlaubt CORS für youtube.com-Origin — der Download läuft im Browser-Kontext, nicht über Tampermonkey-Extension
+- ReadableStream-Streaming mit echtem Progress-Tracking
+- **Merge-Pfad-Fallback**: Erst GM_xmlhttpRequest (`downloadFullStream`), bei 403 automatisch → pageFetch
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.61.user.js` (MD5 `18726dd6d7268a80987693f700e8c610`, cmp-identisch). Syntax OK.
