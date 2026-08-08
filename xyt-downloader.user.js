@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.64
+// @version      1.0.65
 // @description  One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound.
 // @author       Ede
 // @match        *://www.youtube.com/*
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.64';
+  const MY_VERSION = '1.0.65';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -411,25 +411,36 @@
       if (probed || knownTotal > 0) { nextChunk(0); return; }
       probed = true;
       try {
-        // v1.0.64: JD2-Methode — HEAD-Request (Content-Length statt Content-Range).
-        // Vermeidet Range-Bytes=0-0-Header, der in Yandex oft 403/xhr_failed auslöst.
         GM_xmlhttpRequest({
-          method: 'HEAD',
+          method: 'GET',
           url: String(url),
-          headers: jd2Headers(),
+          headers: { 'Range': 'bytes=0-0' },
+          responseType: 'arraybuffer',
           timeout: 15000,
           onload: function (res) {
             try {
-              const cl = res && res.responseHeaders && String(res.responseHeaders).match(/content-length:\s*(\d+)/i);
-              if (cl && Number(cl[1]) > 0) {
-                knownTotal = Number(cl[1]);
-                dbg('[xYT] DL-PROBE (HEAD): Content-Length → ' + knownTotal + ' B');
+              const cr = String(res && res.responseHeaders || '');
+              const m = cr.match(/content-range:\s*bytes\s+0-0\/(\d+)/i);
+              if (res && res.status === 206 && m && Number(m[1]) > 0) {
+                knownTotal = Number(m[1]);
+                dbg('[xYT] DL-PROBE: Content-Range → Gesamtgröße ' + knownTotal + ' B');
                 nextChunk(0);
                 return;
               }
-              console.warn('[xYT] DL-PROBE (HEAD): keine Größe ermittelbar — Fortschritt ohne %');
+              // Server lieferte 200 (Range ignoriert) → komplette Datei schon da
+              if (res && res.status === 200 && res.response && res.response.byteLength > 0) {
+                chunks.push(res.response);
+                received = res.response.byteLength;
+                dbg('[xYT] DL-PROBE: Status 200, komplette Datei (' + received + ' B) direkt übernommen');
+                finishDownload();
+                return;
+              }
+              console.warn('[xYT] DL-PROBE: keine Größe ermittelbar (Status ' + (res && res.status) + ') — Fortschritt ohne %');
               nextChunk(0);
-            } catch (e2) { console.warn('[xYT] DL-PROBE-Fehler:', e2); nextChunk(0); }
+            } catch (e2) {
+              console.warn('[xYT] DL-PROBE-Fehler:', e2);
+              nextChunk(0);
+            }
           },
           onerror: function () { nextChunk(0); },
           ontimeout: function () { nextChunk(0); }
@@ -451,15 +462,12 @@
         return;
       }
       // DIAGNOSE: Jede Chunk-Anfrage mit exakter Range protokollieren
-      // v1.0.64: JD2-Methode — Range als URL-Parameter (&range=START-END),
-      // NICHT als HTTP-Header. JD2's Log beweist: das funktioniert in Yandex.
-      const rangeUrl = String(url) + '&range=' + start + '-' + end;
-      dbg('[xYT] DL-CHUNK-REQ (JD2): ' + rangeUrl.slice(0, 120) + '…');
+      dbg('[xYT] DL-CHUNK-REQ: Range=bytes ' + start + '-' + end + ' (erwartete Chunk-Größe max ' + CHUNK_SIZE + ' B, knownTotal=' + knownTotal + ')');
       try {
         GM_xmlhttpRequest({
           method: 'GET',
-          url: rangeUrl,
-          headers: jd2Headers(),
+          url: String(url),
+          headers: { 'Range': 'bytes=' + start + '-' + end },
           responseType: 'arraybuffer',
           timeout: 60000,
           onload: function (res) {
@@ -569,24 +577,7 @@
   // liefert am Ende ein Uint8Array, das an mergeFmp4 übergeben werden kann.
   // onProgress(received, knownTotal) wird bei jedem Chunk aufgerufen.
   // -------------------------------------------------------------------------
-  // v1.0.64: JD2-Headers (aus JD2's YoutubeDashV2-Log extrahiert):
-  // Firefox 76 UA + Origin + Referer youtube.com + Accept-Encoding: identity.
-  // KEIN VR-UA — JD2 nutzt bewusst einen Standard-Browser-UA.
-  function jd2Headers() {
-    return {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:76.0) Gecko/20100101 Firefox/76.0',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'de,en-gb;q=0.7,en;q=0.3',
-      'Accept-Encoding': 'identity',
-      'Cache-Control': 'no-cache',
-      'Origin': 'https://www.youtube.com',
-      'Referer': 'https://www.youtube.com/'
-    };
-  }
-
-  // v1.0.64: JD2-Methode für Merge-Downloads — HEAD-Probe + URL-Range-Parameter.
-  // Gleiches Prinzip wie downloadUrl, aber für adaptive Formate (DASH).
-  function downloadStreamBytesJd2(url, expectedSize, onProgress) {
+  function downloadStreamBytes(url, expectedSize, onProgress) {
     return new Promise(function (resolve, reject) {
       const knownTotal = Number(expectedSize) || 0;
       const chunks = [];
@@ -600,13 +591,11 @@
           finishOk();
           return;
         }
-        // v1.0.64: JD2-Methode — Range als URL-Parameter
-        const rangeUrl = String(url) + '&range=' + start + '-' + end;
         try {
           GM_xmlhttpRequest({
             method: 'GET',
-            url: rangeUrl,
-            headers: jd2Headers(),
+            url: String(url),
+            headers: { 'Range': 'bytes=' + start + '-' + end },
             responseType: 'arraybuffer',
             timeout: 60000,
             onload: function (res) {
@@ -1779,8 +1768,8 @@
           }
         }
         // Beide Streams PARALLEL laden (jeder mit eigener Chunk-Kette)
-        const vPromise = downloadStreamBytesJd2(stream.url, stream.size, function (received) { vRecv = received; reportMerge(); });
-        const aPromise = downloadStreamBytesJd2(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); });
+        const vPromise = downloadStreamBytes(stream.url, stream.size, function (received) { vRecv = received; reportMerge(); });
+        const aPromise = downloadStreamBytes(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); });
         const vBytes = await vPromise;
         const aBytes = await aPromise;
         setStatusText('Führe Video + Audio zusammen …');
