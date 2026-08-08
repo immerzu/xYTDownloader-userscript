@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.67
+// @version      1.0.68
 // @description  One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound.
 // @author       Ede
 // @match        *://www.youtube.com/*
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.67';
+  const MY_VERSION = '1.0.68';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -353,12 +353,6 @@
   }
 
   // Blob via ObjectURL + <a download> speichern (Dateiname = Titel + Qualität)
-  function getSafeFilename(title, ext) {
-    const unsafe = title || 'video';
-    const safe = unsafe.replace(/[\/\\:*?"<>|#]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 200);
-    return safe + '.' + (ext || 'mp4');
-  }
-
   function saveBlob(blob, filename) {
     const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1754,55 +1748,47 @@
       }
 
       // ===================================================================
-      // DASH-MERGE-PFAD: Video-only + Audio-only → zwei separate Dateien.
-      // In Yandex sind GM_xmlhttpRequest UND GM_download blockiert. Einzige
-      // verbleibende Methode: natives <a download>-Element im Seiten-DOM.
+      // DASH-MERGE-PFAD: Video-only + Audio-only → EINE MP4-Datei mit Ton.
+      // Wird nur für Video-only-Streams genutzt, zu denen ein MP4-Audio-
+      // Stream existiert (mergeAudio wird vom Panel mitgegeben).
+      // ===================================================================
       if (kind === 'video' && mergeAudio && stream && stream.url && mergeAudio.url) {
-        const videoFilename = getSafeFilename(title || videoId, 'mp4');
-        const audioFilename = getSafeFilename(title || videoId, 'm4a');
-        try {
-          [ { url: stream.url, name: 'Video_' + videoFilename },
-            { url: mergeAudio.url, name: 'Audio_' + audioFilename }
-          ].forEach(function (f) {
-            const a = document.createElement('a');
-            a.href = f.url;
-            a.download = f.name;
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(function () { a.remove(); }, 4000);
-          });
-          setStatusText('2 Dateien werden gespeichert (Video + Audio getrennt)');
-          hint.textContent = 'Video- und Audio-Datei werden im Download-Ordner gespeichert.';
-        } catch (eA) {
-          // Letzter Fallback: window.open
-          window.open(stream.url);
-          window.open(mergeAudio.url);
-          setStatusText('2 Dateien via Fallback (Video + Audio getrennt)');
-          hint.textContent = 'Video- und Audio-Datei werden im Download-Ordner gespeichert.';
+        dbg('[xYT] MERGE-START: Video itag=' + stream.itag + ' (' + (stream.size || '?') + ' B) + Audio itag=' + mergeAudio.itag
+          + ' (' + (mergeAudio.size || '?') + ' B) → eine MP4');
+        hint.textContent = 'Video + Audio werden geladen und zusammengeführt …';
+        const total = (Number(stream.size) || 0) + (Number(mergeAudio.size) || 0);
+        let vRecv = 0, aRecv = 0;
+        function reportMerge() {
+          if (total > 0) {
+            const pct = Math.max(0, Math.min(100, Math.round(((vRecv + aRecv) / total) * 100)));
+            setBarProgress(pct);
+            setStatusText('Download läuft: ' + pct + ' % (' + ((vRecv + aRecv) / 1048576).toFixed(1) + ' / ' + (total / 1048576).toFixed(1) + ' MB)');
+          } else {
+            setStatusText('Download läuft: ' + ((vRecv + aRecv) / 1048576).toFixed(1) + ' MB geladen …');
+          }
         }
+        // Beide Streams PARALLEL laden (jeder mit eigener Chunk-Kette)
+        const vPromise = downloadStreamBytes(stream.url, stream.size, function (received) { vRecv = received; reportMerge(); });
+        const aPromise = downloadStreamBytes(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); });
+        const vBytes = await vPromise;
+        const aBytes = await aPromise;
+        setStatusText('Führe Video + Audio zusammen …');
+        dbg('[xYT] MERGE-LADEN-FERTIG: Video=' + vBytes.length + ' B, Audio=' + aBytes.length + ' B');
+        const merged = mergeFmp4(vBytes, aBytes);
+        dbg('[xYT] MERGE-OK: gemergt=' + merged.length + ' B (Video ' + vBytes.length + ' + Audio ' + aBytes.length + ')');
+        setBarProgress(100);
+        setStatusText('Download abgeschlossen: ' + filename);
+        saveBlob(new Blob([merged], { type: 'video/mp4' }), filename);
+        autoClosePanelAfter(2500);
+        hint.textContent = 'Datei (Video + Audio, mit Ton) wird im Browser-Download-Ordner gespeichert.';
         return;
       }
 
-      // v1.0.67: Natives <a download>-Element statt GM_download (auch blockiert).
-      // Keine Extension-API — der Browser-Kern lädt die URL direkt herunter.
-      try {
-        const a = document.createElement('a');
-        a.href = stream.url;
-        a.download = filename;
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(function () { a.remove(); }, 4000);
-        setStatusText('Download gestartet: ' + filename);
-        st.className = 'xyt-dl-status';
-        hint.textContent = 'Datei wird im Browser-Download-Ordner gespeichert.';
-      } catch (eA) {
-        window.open(stream.url);
-        setStatusText('Download via Fallback: ' + filename);
-        st.className = 'xyt-dl-status';
-        hint.textContent = 'Datei wird im Browser-Download-Ordner gespeichert.';
-      }
+      downloadUrl(stream.url, filename, stream.size);
+
+      st.textContent = 'Download gestartet: ' + filename;
+      st.className = 'xyt-dl-status';
+      hint.textContent = 'Datei wird im Browser-Download-Ordner gespeichert.';
     } catch (err) {
       const st = document.createElement('div');
       st.className = 'xyt-dl-status err';
