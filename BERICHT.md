@@ -902,3 +902,17 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 - **Merge-Pfad-Fallback**: Erst GM_xmlhttpRequest (`downloadFullStream`), bei 403 automatisch → pageFetch
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.61.user.js` (MD5 `18726dd6d7268a80987693f700e8c610`, cmp-identisch). Syntax OK.
+
+## 36. v1.0.62 — FEATURE: Seiten-URL-Fallback (WEB-Client adaptive-URLs aus dem Player)
+
+**Stand:** 2026-08-08 — Auch unsafeWindow.fetch auf ANDROID_VR-adaptive-URLs schlug in Yandex mit 403 fehl. Die ANDROID_VR-URLs sind IP-gebunden und Yandex' Netzwerk-Proxy ändert die ausgehende IP → 403.
+
+**Lösung (v1.0.62):**
+- **`getPageStreamUrl(itag)`**: holt die adaptive-Format-URL aus der **Seiten-PlayerResponse** (`ytInitialPlayerResponse.streamingData`) — das sind die WEB-Client-URLs, die der Browser-Player zum Abspielen des Videos nutzt
+- Diese URLs funktionieren garantiert im aktuellen Browser-Kontext (der Player streamt damit)
+- Merge-Download-Strategie (neue Reihenfolge):
+  1. **Seiten-URL** (WEB) via `unsafeWindow.fetch()` — Primärpfad in Yandex
+  2. ANDROID_VR-URL via `downloadFullStream` (GM_xmlhttpRequest)
+  3. ANDROID_VR-URL via `downloadViaPageFetch` (letzter Fallback)
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.62.user.js` (MD5 `75738bbde34b9128eb54dace79a0547c`, cmp-identisch). Syntax OK.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.61
+// @version      1.0.62
 // @description  YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch und /shorts. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton. / One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound. / Пользовательский скрипт для скачивания видео с YouTube в один клик. Поддерживает все качества до 4K со звуком. Работает на /watch и /shorts. Без внешних API, прямой клиент ANDROID_VR. Слияние DASH для высоких разрешений со звуком.
 // @author       Ede
 // @match        *://www.youtube.com/*
@@ -72,7 +72,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.61';
+  const MY_VERSION = '1.0.62';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -259,6 +259,23 @@
       }
     } catch (e) { /* ignore */ }
     return null;
+  }
+
+  // v1.0.62: Hole eine adaptive-Format-URL aus der SEITEN-PlayerResponse
+  // (WEB-Client, ytInitialPlayerResponse) für das gleiche itag. Diese URLs
+  // sind für den Browser-Player signiert und funktionieren auch in Yandex
+  // (der Player streamt das Video ja damit). Fallback, wenn ANDROID_VR-URLs
+  // via GM_xmlhttpRequest/pageFetch 403 kriegen.
+  function getPageStreamUrl(itag) {
+    try {
+      const pr = getPlayerResponse();
+      if (!pr || !pr.streamingData) return null;
+      const af = pr.streamingData.adaptiveFormats || [];
+      const f = pr.streamingData.formats || [];
+      const all = af.concat(f);
+      const found = all.find(function (s) { return s.itag === itag && s.url; });
+      return found ? found.url : null;
+    } catch (e) { return null; }
   }
 
   // Tatsächlich verfügbare Höhen aus adaptiveFormats (höchste Auflösung je Stufe),
@@ -584,14 +601,14 @@
   // onProgress(received, knownTotal) wird bei jedem Chunk aufgerufen.
   // -------------------------------------------------------------------------
   // -------------------------------------------------------------------------
-  // v1.0.61: MERGE-Download ohne Range. Adaptive googlevideo-URLs (DASH-Streams
+  // v1.0.62: MERGE-Download ohne Range. Adaptive googlevideo-URLs (DASH-Streams
   // ohne ratebypass) erlauben nur 3-4 Range-Anfragen pro URL — danach 403. Die
   // einzige Lösung: jeder Stream wird als EINER kompletter Download geladen.
   // Der Fortschritt läuft über onprogress (loadend/loadstart sind in Yandex
   // nicht inkrementell, aber bei EINEM linearen Download funktioniert es).
   // -------------------------------------------------------------------------
   // -------------------------------------------------------------------------
-  // v1.0.61: Fallback-Download via unsafeWindow.fetch() (Seiten-Kontext).
+  // v1.0.62: Fallback-Download via unsafeWindow.fetch() (Seiten-Kontext).
   // Yandex' GM_xmlhttpRequest blockt googlevideo-Adaptive-URLs (403), aber
   // fetch() aus dem youtube.com-Seiten-Kontext hat CORS-Zugriff. Mit
   // ReadableStream-Streaming und echtem Progress-Tracking.
@@ -957,7 +974,7 @@
   // strikter: Range-Requests mit Browser-UA (Yandex) werden mit 403 abgelehnt
   // („läuft an, dann nach ~1 % Fehler 403"). JD2 sendet bei jedem Stream-
   // Request den Client-User-Agent + Referer mit — das machen wir jetzt genauso.
-  // v1.0.61: Yandex lässt KEINE User-Agent-Überschreibung in GM_xmlhttpRequest
+  // v1.0.62: Yandex lässt KEINE User-Agent-Überschreibung in GM_xmlhttpRequest
   // zu (Browser-CSP/Extension-Security). Der VR-UA wird ignoriert, was bei
   // progressiven URLs (ratebypass=yes) harmlos ist, aber adaptive URLs lehnen
   // den Yandex-Standard-UA mit 403 ab. Lösung: KEINEN User-Agent setzen —
@@ -2018,14 +2035,28 @@
             setStatusText('Download läuft: ' + ((vRecv + aRecv) / 1048576).toFixed(1) + ' MB geladen …');
           }
         }
-        // v1.0.61: Merge-Download mit Fallback-Strategie.
-        // 1. GM_xmlhttpRequest (downloadFullStream) — funktioniert in Chromium
-        // 2. Bei 403 → unsafeWindow.fetch aus Seiten-Kontext (Yandex-Fallback)
-        async function mergeDownload(url, streamSize, onProg, label) {
+        // v1.0.62: Merge-Download-Helper. Strategie:
+        // 1. Seiten-URL (WEB-Client) via unsafeWindow.fetch — der Player
+        //    streamt das Video damit → funktioniert in Yandex garantiert
+        // 2. Keine Seiten-URL → downloadFullStream (GM_xmlhttpRequest)
+        // 3. 403 → pageFetch auf ANDROID_VR-URL (zweiter Fallback)
+        async function mergeDownload(url, streamSize, onProg, label, itag) {
+          // 1. Seiten-URL bevorzugt (Player-Kontext, funktioniert in Yandex)
+          const pageUrl = getPageStreamUrl(itag);
+          if (pageUrl && hasPageFetch()) {
+            dbg('[xYT] MERGE: Seiten-URL für ' + label + ' itag=' + itag + ' → pageFetch');
+            try {
+              return await downloadViaPageFetch(pageUrl, onProg);
+            } catch (ePage) {
+              dbg('[xYT] MERGE: Seiten-URL fehlgeschlagen:', ePage.message || ePage);
+            }
+          }
+          // 2. Fallback: GM_xmlhttpRequest auf ANDROID_VR-URL
           try {
             return await downloadFullStream(url, streamSize, onProg);
           } catch (e) {
             const msg = e && e.message ? e.message : String(e);
+            // 3. Letzter Fallback: pageFetch auf ANDROID_VR-URL
             if (/403/.test(msg) && hasPageFetch()) {
               dbg('[xYT] MERGE: 403 → Fallback pageFetch für ' + label);
               return await downloadViaPageFetch(url, onProg);
@@ -2036,9 +2067,9 @@
         dbg('[xYT] MERGE: Video itag=' + stream.itag + ' (' + (stream.size || '?') + ' B) + Audio itag=' + mergeAudio.itag
           + ' (' + (mergeAudio.size || '?') + ' B) → eine MP4');
         setStatusText('Video wird geladen …');
-        const vBytes = await mergeDownload(stream.url, stream.size, function (recv, total) { vRecv = recv; vTotal = total; reportMerge(); }, 'Video');
+        const vBytes = await mergeDownload(stream.url, stream.size, function (recv, total) { vRecv = recv; vTotal = total; reportMerge(); }, 'Video', stream.itag);
         setStatusText('Audio wird geladen …');
-        const aBytes = await mergeDownload(mergeAudio.url, mergeAudio.size, function (recv, total) { aRecv = recv; aTotal = total; reportMerge(); }, 'Audio');
+        const aBytes = await mergeDownload(mergeAudio.url, mergeAudio.size, function (recv, total) { aRecv = recv; aTotal = total; reportMerge(); }, 'Audio', mergeAudio.itag);
         setStatusText('Führe Video + Audio zusammen …');
         dbg('[xYT] MERGE-LADEN-FERTIG: Video=' + vBytes.length + ' B, Audio=' + aBytes.length + ' B');
         const merged = mergeFmp4(vBytes, aBytes);
