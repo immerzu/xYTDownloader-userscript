@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.69
-// @description  YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch und /shorts. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton. / One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch and /shorts. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound. / Пользовательский скрипт для скачивания видео с YouTube в один клик. Поддерживает все качества до 4K со звуком. Работает на /watch и /shorts. Без внешних API, прямой клиент ANDROID_VR. Слияние DASH для высоких разрешений со звуком.
+// @version      1.0.70
+// @description YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch, /shorts und /live. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton. / One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch, /shorts and /live. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound. / Пользовательский скрипт для скачивания видео с YouTube в один клик. Поддерживает все качества до 4K со звуком. Работает на /watch, /shorts и /live. Без внешних API, прямой клиент ANDROID_VR. Слияние DASH для высоких разрешений со звуком.
 // @author       Ede
 // @match        *://www.youtube.com/*
 // @match        *://youtube.com/*
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.69';
+  const MY_VERSION = '1.0.70';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -218,7 +218,7 @@
   function getVideoId() {
     // v1.0.41: Shorts-URLs (/shorts/<videoId>) haben KEINEN ?v=-Parameter —
     // die ID steckt im Pfad. Zuerst ?v= prüfen, dann /shorts/-Pfad, dann
-    // /live/-Pfad (beendete Livestreams, v1.0.69), dann PlayerResponse.
+    // /live/-Pfad (beendete Livestreams, v1.0.70), dann PlayerResponse.
     try {
       const p = new URLSearchParams(window.location.search);
       const v = p.get('v');
@@ -864,7 +864,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // v1.0.69: Erkennung von Livestreams — diese sind NICHT herunterladbar.
+  // v1.0.70: Erkennung von Livestreams — diese sind NICHT herunterladbar.
   // Merkmale: isLive===true, isLiveDvrEnabled===true ohne Streams,
   // hlsManifestUrl ohne formats/adaptiveFormats.
   // WICHTIG: NICHT isLiveContent verwenden — auch bei vergangenen VODs true.
@@ -927,7 +927,7 @@
             try {
               const j = JSON.parse(res.responseText);
               const status = j && j.playabilityStatus && j.playabilityStatus.status;
-              // v1.0.69: Livestream-Statuswerte mit verständlicher Meldung abfangen.
+              // v1.0.70: Livestream-Statuswerte mit verständlicher Meldung abfangen.
               if (status === 'LIVE_STREAM_OFFLINE' || status === 'LIVE_STREAM_ENDED') {
                 reject(new Error('Dieser Livestream ist nicht verfügbar (offline/beendet). Live-Übertragungen können nicht heruntergeladen werden.'));
                 return;
@@ -1581,7 +1581,7 @@
       const pr = await fetchAndroidVrPlayer(videoId);
       const streams = extractStreams(pr);
       if (streams.progressive.length === 0 && streams.videoOnly.length === 0 && streams.audioOnly.length === 0) {
-        // v1.0.69: Livestream-Fall sauber abfangen.
+        // v1.0.70: Livestream-Fall sauber abfangen.
         if (isLivePlayerResponse(pr)) {
           renderPanelMessage('Dieses Video ist ein Livestream und kann nicht heruntergeladen werden.', true);
         } else {
@@ -1589,7 +1589,7 @@
         }
         return;
       }
-      // v1.0.69: Beendete Livestreams mit NUR adaptiven DASH-Streams (kein
+      // v1.0.70: Beendete Livestreams mit NUR adaptiven DASH-Streams (kein
       // progressive, kein contentLength) — diese liefern 204 und sind nicht
       // downloadbar. Saubere Meldung statt Buttons.
       const allVideo = streams.video || [];
