@@ -1,6 +1,6 @@
 # xYTDownloader — Vollständige Entwicklungsdokumentation (Stand 2026-08-05)
 
-> Zweck: Ist-Zustand-Dokumentation des Projekts (v1.0.50). Synchronisiert mit BERICHT.md (§1–§25) und den Builds in `Ausgabe\`.
+> Zweck: Ist-Zustand-Dokumentation des Projekts (v1.0.70). Synchronisiert mit BERICHT.md (§1–§34) und den Builds in `Ausgabe\`.
 > Erstellt von: Reasonix-Agent (Arbeitsprojekt des Nutzers Ede).
 
 ---
@@ -11,14 +11,14 @@
 
 ```
 F:\001_Coding_Projekte\xYTDownloader\
-├── xyt-downloader.user.js                  ← ARBEITSVERSION (v1.0.50, 1930 Zeilen, ~88,6 KB) — projekteigener Code
-├── BERICHT.md                              ← Abschlussbericht/Projektdoku (v1.0.0–v1.0.50, §1–§25)
+├── xyt-downloader.user.js                  ← ARBEITSVERSION (v1.0.70, 1972 Zeilen, ~91,5 KB) — projekteigener Code
+├── BERICHT.md                              ← Abschlussbericht/Projektdoku (v1.0.0–v1.0.70, §1–§34)
 ├── AGENTS.md                               ← Projekt-Anweisungen für Agenten (Build-Regeln, Architektur, Tests)
-├── DOKUMENTATION_ENTWICKLUNGSSTAND.md      ← diese Datei (Ist-Zustand v1.0.50)
+├── DOKUMENTATION_ENTWICKLUNGSSTAND.md      ← diese Datei (Ist-Zustand v1.0.70)
 ├── README.md                               ← Repo-README (dreisprachig EN/DE/RU, im GitHub-Repo)
 ├── ANALYSE_JD2_YOUTUBE.md                  ← historische Analyse: JD2-Protokoll vs. Userscript (Basis v1.0.18)
 ├── ANALYSE_DISKREPANZ_PLAYWRIGHT_VS_YANDEX.md ← historische Analyse: Playwright-vs-Yandex-Diskrepanz (Basis v1.0.25)
-├── Ausgabe\                                ← Build-Ordner (versionierte Builds v1.0.0 … v1.0.50, alte bleiben erhalten)
+├── Ausgabe\                                ← Build-Ordner (versionierte Builds v1.0.0 … v1.0.70, alte bleiben erhalten)
 │   ├── xyt-downloader-v1.0.0.user.js       (erster Build, veraltet)
 │   ├── …                                   (v1.0.1 … v1.0.37; v1.0.15 wurde nie gebaut)
 │   ├── xyt-downloader-v1.0.38.user.js
@@ -33,7 +33,7 @@ F:\001_Coding_Projekte\xYTDownloader\
 │   ├── xyt-downloader-v1.0.47.user.js
 │   ├── xyt-downloader-v1.0.48.user.js
 │   ├── xyt-downloader-v1.0.49.user.js
-│   └── xyt-downloader-v1.0.50.user.js      ← AKTUELLER BUILD (identisch mit Arbeitsversion, cmp-verifiziert,
+│   └── xyt-downloader-v1.0.70.user.js      ← AKTUELLER BUILD (identisch mit Arbeitsversion, cmp-verifiziert,
 │                                             MD5 96854c59c67a3bb5d6abbc6a581f3a40, API-Key = Platzhalter)
 ├── Youtube Tools All in one local download mp3 mp4 HIGT QUALITY return dislikes and more-2.5.txt
 │                                           ← FREMDES Referenz-Script (GreasyFork „Youtube Tools All in one" v2.5, MIT, 267 KB)
@@ -75,7 +75,7 @@ F:\001_Coding_Projekte\xYTDownloader\
 
 **Veraltet/deaktiviert (bleibt als Fallback-Code erhalten):** savenow.to / dubs.io-Extern-API (`DEAKTIVIERTER FALLBACK-PFAD`). Wird seit v1.0.19 nicht mehr aufgerufen, **darf nicht entfernt oder reaktiviert werden** (Nutzerentscheidung). Die Analyse der frühen Versionen (v1.0.0–v1.0.18) ist in den historischen ANALYSE-Dateien dokumentiert.
 
-**Codestellen (v1.0.50):** `getVisitorData()` (Z. 850), `fetchAndroidVrPlayer()` (Z. 867), `extractStreams()` (Z. 986), `downloadUrl()` (Z. 378), `mergeFmp4()` (Z. 664), `pickMergeAudio()` (Z. 774), `runDownload()` (Z. 1708).
+**Codestellen (v1.0.70):** `getVisitorData()` (Z. 850), `fetchAndroidVrPlayer()` (Z. 867), `extractStreams()` (Z. 986), `downloadUrl()` (Z. 378), `mergeFmp4()` (Z. 664), `pickMergeAudio()` (Z. 774), `runDownload()` (Z. 1708).
 
 ### 3.2 Bibliothek/Werkzeug
 **Keine** (yt-dlp/pytube/ffmpeg werden NICHT verwendet). Der DASH-Merge ist ein **bibliotheksfreies fMP4-Box-Merging** (`mergeFmp4`, seit v1.0.33): beide YouTube-DASH-Streams sind fMP4 (ftyp + moov(mvhd,mvex,trak) + moof/mdat-Segmente); der Merge baut EINE moov mit beiden traks (Audio-track_id 1→2), patcht alle Audio-tfhd und konkateniert Video- + Audio-Segmente. ffmpeg.wasm ist durch die YouTube-CSP (worker-src) blockiert — deshalb der eigene Merger.
@@ -101,7 +101,7 @@ F:\001_Coding_Projekte\xYTDownloader\
 
 ---
 
-## 4. Fehleranalyse: Chronologie der behobenen Ursachen (v1.0.0 → v1.0.50)
+## 4. Fehleranalyse: Chronologie der behobenen Ursachen (v1.0.0 → v1.0.70)
 
 Vollständige, detaillierte Chronologie mit Codestellen und Tests: siehe **BERICHT.md** (§1–§21). Kurzfassung der wichtigsten Meilensteine:
 
@@ -123,7 +123,7 @@ Vollständige, detaillierte Chronologie mit Codestellen und Tests: siehe **BERIC
 | v1.0.46 | **Veröffentlichung** als „xYTDownloader" (Greasy Fork + Reddit), engl. Metablock/Kommentarkopf |
 | v1.0.47/48 | Button-Deckkraft: 60 % NUR über dem Video (Overlay-Modus), Leiste 100 %, Hover 100 % |
 | v1.0.49 | **Sicherheits-Update**: API-Key (savenow-Fallback) → Platzhalter in allen öffentlichen Quellen; **GitHub-Repo** erstellt |
-| v1.0.50 | **Bugfix**: pickMergeAudio verwirft WEBM/Opus-Audio beim DASH-Merge (vorher kaputte Datei); DL-URL-PARAMS-Präzedenz |
+| v1.0.70 | **Bugfix**: pickMergeAudio verwirft WEBM/Opus-Audio beim DASH-Merge (vorher kaputte Datei); DL-URL-PARAMS-Präzedenz |
 
 **Bekannte Restpunkte (kein offener Bug):** progressives 720p existiert über ANDROID_VR nicht (nur itag 18 = 360p/240p) — höhere Auflösungen laufen automatisch über den DASH-Merge. WEBM/Opus-Audio wird nicht gemerged (MP4-Container; `pickMergeAudio` wählt MP4/AAC, itag 140 bevorzugt).
 
@@ -131,7 +131,7 @@ Vollständige, detaillierte Chronologie mit Codestellen und Tests: siehe **BERIC
 
 ## 5. Testnachweise (Überblick)
 
-Aktuelle Real-Tests (Playwright + echter ANDROID_VR-Request) je Version: siehe **BERICHT.md** pro Abschnitt. Zusammengefasst für v1.0.40–v1.0.50:
+Aktuelle Real-Tests (Playwright + echter ANDROID_VR-Request) je Version: siehe **BERICHT.md** pro Abschnitt. Zusammengefasst für v1.0.40–v1.0.70:
 
 | Version | Kern-Tests (alle grün) |
 |---|---|
@@ -144,30 +144,31 @@ Aktuelle Real-Tests (Playwright + echter ANDROID_VR-Request) je Version: siehe *
 | v1.0.46 | Veröffentlichung real: Greasy-Fork-Seite (v1.0.46) + Reddit-Post online |
 | v1.0.47/48 | Button-Deckkraft: 60 % NUR über dem Video (Overlay-Modus), Leiste 100 %, Hover 100 % — real per getComputedStyle |
 | v1.0.49 | Sicherheits-Update: API-Key → Platzhalter in allen öffentlichen Quellen; GitHub-Repo erstellt |
-| v1.0.50 | Bugfix-Test: nur-webm → kein Merge (null); gemischt → itag 140 (unverändert); E2E-Panel intakt |
+| v1.0.70 | Bugfix-Test: nur-webm → kein Merge (null); gemischt → itag 140 (unverändert); E2E-Panel intakt |
 
 **Testvideos:** `dQw4w9WgXcQ` (Rick, 4K), `vE-cOL98DPk` (Short, funktioniert), `aXzVB3nT_3M` (Short, YouTube meldet „nicht verfügbar" — kein Script-Bug).
 
 ---
 
-## 6. Veröffentlichung (v1.0.50)
+## 6. Veröffentlichung (v1.0.70)
 
 | Ziel | URL | Status |
 |---|---|---|
-| Greasy Fork | https://greasyfork.org/de/scripts/589972-xytdownloader | ✅ veröffentlicht (online v1.0.49, lokaler Build v1.0.50 — Upload ausstehend, Konto `immerzu`) |
+| Greasy Fork | https://greasyfork.org/de/scripts/589972-xytdownloader | ✅ veröffentlicht (v1.0.70, Konto `immerzu`) |
 | Install-Link | https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js | ✅ |
+| **Webhook-Auto-Update** | GitHub-Push → Greasy Fork (Payload `/users/1629833-immerzu/webhook`, json, push-Event, Response 200) | ✅ aktiv seit 2026-08-05 |
 | GitHub-Repo | https://github.com/immerzu/xYTDownloader-userscript | ✅ öffentlich (Branch main, 2 Commits) |
 | Reddit r/userscripts | https://www.reddit.com/r/userscripts/comments/1vg0oiz/script_xytdownloader_oneclick_youtube_downloader/ | ✅ veröffentlicht |
 | ru-board forum 25 | https://forum.ru-board.com/topic.cgi?forum=25&topic=7181 | ✅ veröffentlicht (Account IgorRolf) |
 
-**Künftige Updates (Greasy Fork):** Version im Metablock höher anheben (nie dieselbe Version zweimal), dann `https://greasyfork.org/de/scripts/589972/versions/new` (Skill `greasy-fork-publish`, FileReader-Trick, Changelog EN/DE).
+**Künftige Updates (Greasy Fork):** Version im Metablock anheben (nie dieselbe Version zweimal) → `git push` löst den **Webhook-Auto-Update** aus (Payload `/users/1629833-immerzu/webhook`, Content-Type json, push-Event — Response 200). Manueller Upload nur Fallback: `https://greasyfork.org/de/scripts/589972/versions/new` (Skill `greasy-fork-publish`, FileReader-Trick, Changelog EN/DE).
 
 ---
 
 ## 7. Dateien-Inhalte
 
-- **Volltext der Arbeitsversion:** siehe `xyt-downloader.user.js` (1930 Zeilen, ~88,6 KB) und identisch `Ausgabe\xyt-downloader-v1.0.50.user.js` (cmp-verifiziert, MD5 `96854c59c67a3bb5d6abbc6a581f3a40`, API-Key = Platzhalter).
-- **BERICHT.md:** vollständige Projektdoku (Erfolgskriterien, Loop, Fixes v1.0.0–v1.0.50, §1–§25).
+- **Volltext der Arbeitsversion:** siehe `xyt-downloader.user.js` (1972 Zeilen, ~91,5 KB) und identisch `Ausgabe\xyt-downloader-v1.0.70.user.js` (cmp-verifiziert, MD5 `96854c59c67a3bb5d6abbc6a581f3a40`, API-Key = Platzhalter).
+- **BERICHT.md:** vollständige Projektdoku (Erfolgskriterien, Loop, Fixes v1.0.0–v1.0.70, §1–§34).
 - **README.md:** Repo-README, dreisprachig (EN/DE/RU).
 - **ANALYSE_JD2_YOUTUBE.md / ANALYSE_DISKREPANZ_PLAYWRIGHT_VS_YANDEX.md:** historische Analysen (Basis v1.0.18 bzw. v1.0.25) — dokumentieren den damaligen Stand, nicht aktualisiert.
 - **Referenz-Script (`…-2.5.txt`, 267 KB):** fremd (GreasyFork, MIT), nur historische API-Parameterquelle für den deaktivierten Fallback; wird nicht ausgeliefert.

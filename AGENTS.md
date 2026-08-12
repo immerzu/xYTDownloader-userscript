@@ -35,10 +35,10 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 - `@connect` explizit (Wildcards unzuverlässig in Yandex): `p.lbserver.xyz`, `*.lbserver.xyz`, `*.googlevideo.com` u. a.
 - Kurzlinks (youtu.be/…) sind nicht abgedeckt (nur /watch- und /shorts-Seiten).
 
-## Veröffentlichung (Stand v1.0.50)
+## Veröffentlichung (Stand v1.0.70)
 
-- Greasy Fork: https://greasyfork.org/de/scripts/589972-xytdownloader (Name „xYTDownloader", Skript-ID 589972; **online v1.0.49**, lokaler Build v1.0.50 — Upload ausstehend)
-- Update-URL für künftige Versionen: https://greasyfork.org/de/scripts/589972/versions/new (Skill `greasy-fork-publish`)
+- Greasy Fork: https://greasyfork.org/de/scripts/589972-xytdownloader (Name „xYTDownloader", Skript-ID 589972; **online v1.0.70**, Konto `immerzu`)
+- **Webhook-Auto-Update aktiv** (seit 2026-08-05): GitHub-Push → Greasy Fork aktualisiert automatisch (Payload `/users/1629833-immerzu/webhook`, Content-Type json, push-Event, Response 200). Kein manueller Upload nötig — nur Fallback: https://greasyfork.org/de/scripts/589972/versions/new (Skill `greasy-fork-publish`)
 - Install-Link: https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js
 - GitHub-Repo: https://github.com/immerzu/xYTDownloader-userscript (öffentlich, Branch main)
 - Reddit-Post: https://www.reddit.com/r/userscripts/comments/1vg0oiz/script_xytdownloader_oneclick_youtube_downloader/
