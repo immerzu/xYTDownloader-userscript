@@ -949,3 +949,30 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 - Hinweis im Panel: "Mit ffmpeg mergen: ffmpeg -i Video_... -i Audio_... -c copy output.mp4"
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.66.user.js` (MD5 `4d746d2d10a3fb36255ea203ee733e28`). Syntax OK.
+
+## 40. v1.0.67 — `<a download>` statt GM_download (letzte verbleibende Methode)
+
+**Stand:** 2026-08-08 — Yandex blockiert inzwischen auch GM_download für googlevideo-URLs (nach GM_xmlhttpRequest). Experiment: `<a download>`-Element im Seiten-DOM, das den nativen Browser-Download auslöst; Fallback `window.open(url)`.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.67.user.js` (MD5 `111fe21f7b30eebe72e0c4feb4a60ade`, cmp-identisch). Syntax OK.
+
+## 41. v1.0.68 — Arbeitsversion auf v1.0.49 zurückgesetzt (Yandex-Fehler war Tampermonkey-Korruption)
+
+**Stand:** 2026-08-08 — Nachweis: Die 403/xhr_failed-Fehler in Yandex lagen NICHT am Script, sondern an einer beschädigten Tampermonkey-Installation (nach Rechner-Neustart). Fix für den Nutzer: Cookies löschen → Tampermonkey komplett entfernen → Browser neu starten → Tampermonkey neu installieren → Script frisch importieren. Die Experimente v1.0.55–v1.0.67 (pageFetch, JD2-Methode, GM_download, `<a download>`) wurden alle zurückgerollt; Arbeitsversion = purer v1.0.49-Code, nur Versionsnummer auf v1.0.68 angehoben. `v1.0.68-top` ist identisch mit `v1.0.68`.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.68.user.js` (MD5 `e74640a207c4bf5059efbf396f29344e`, cmp-identisch). Syntax OK.
+
+## 42. v1.0.69 — v1.0.68 + 3 sinnvolle Features (Basis v1.0.49)
+
+**Stand:** 2026-08-08 — Drei Ergänzungen auf der bewiesenen v1.0.49-Codebasis (kein GM_download, kein pageFetch, kein JD2):
+1. **Dreisprachige @description** (DE → EN → RU in einer Zeile, Greasy-Fork-Standard).
+2. **Livestream-Erkennung** (`isLivePlayerResponse`, /live/-URLs, verständliche Meldungen).
+3. **Live-VOD-Meldung** (keine falschen Buttons bei beendeten Livestreams ohne progressive Formate).
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.69.user.js` (MD5 `72e47226201df3042bbe700b59519b3b`, cmp-identisch). Syntax OK.
+
+## 43. v1.0.70 — @description auf /watch, /shorts und /live erweitert
+
+**Stand:** 2026-08-09 — @description im Metablock auf /watch, /shorts und /live erweitert + doppeltes Leerzeichen entfernt. Zusätzlich description.md (Greasy-Fork-Zusatzinfos, DE → RU → EN) angelegt und per Commit `0751fd9` ins Repo aufgenommen.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.70.user.js` (MD5 `16492a1b86a9aea97e4d804e4cebae89`, cmp-identisch). Syntax OK.

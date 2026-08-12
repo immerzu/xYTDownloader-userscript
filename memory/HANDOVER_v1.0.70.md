@@ -21,14 +21,14 @@
 
 ### API-Key-Status:
 - `API_KEY = 'HIER_API_KEY_EINFUEGEN'` (Platzhalter, savenow-Fallback DEAKTIVIERT)
-- Echter Key existiert NUR in `Ausgabe\xyt-downloader-v1.0.48.user.js` (NICHT öffentlich!)
+- Der echte Key war ursprünglich in `Ausgabe\xyt-downloader-v1.0.48.user.js` enthalten — dieser Build ist inzwischen aus dem Build-Ordner aufgeräumt. **In allen verbleibenden Builds (v1.0.49+) und allen öffentlichen Quellen ist der Key ein Platzhalter.**
 
 ## 2. OFFENE AUFGABEN
 
 - [ ] **Yandex-Tampermonkey-Korruptions-Check einbauen:** Das Script könnte prüfen ob GM_xmlhttpRequest funktioniert (Ping-Test), bevor es Fehlermeldungen anzeigt
 - [ ] **Benchmark gegen JD2:** Systematisch vergleichen welche Videos mit unserem Script vs. JD2 ladbar sind
-- [ ] **DOKUMENTATION_ENTWICKLUNGSSTAND.md** auf v1.0.70 aktualisieren (noch auf v1.0.50)
-- [ ] **AGENTS.md** aktualisieren (Build-Regeln und Veröffentlichungsstand aktualisieren)
+- [x] **DOKUMENTATION_ENTWICKLUNGSSTAND.md** auf v1.0.70 aktualisieren (erledigt 2026-08-12: MD5/Zeilenangaben korrigiert, §4-Chronologie v1.0.50–70 ergänzt)
+- [x] **AGENTS.md** aktualisieren (erledigt 2026-08-12: Zeilenangaben, /live, Grenzen korrigiert)
 
 ## 3. WICHTIGE DATEIPFADE
 

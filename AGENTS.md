@@ -10,18 +10,18 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 - `BERICHT.md` pro Build mit neuem Abschnitt aktualisieren.
 - **Git-Repo vorhanden** (seit 2026-08-05): `immerzu/xYTDownloader-userscript` auf GitHub. Commits/Pushes sind ERLAUBT und erwünscht (nur keine sensiblen Daten hochladen — API-Key bleibt Platzhalter). Kein Tag/Release per Git.
 - **R8/Minify: immer verboten** (nicht zutreffend hier, aber projektübergreifende Regel).
-- savenow.to/dubs.io-Fallback-Code (`DEAKTIVIERTER FALLBACK-PFAD`, Z. 1155) **deaktiviert lassen**, nie reaktivieren.
+- savenow.to/dubs.io-Fallback-Code (`DEAKTIVIERTER FALLBACK-PFAD`, Z. 1182) **deaktiviert lassen**, nie reaktivieren.
 
 ## Architektur
 
 - `getVideoId()` (Z. 218): `?v=`-Param → `/shorts/<id>`-Pfad → PlayerResponse. Rückgabe: reine Video-ID.
-- `fetchAndroidVrPlayer(videoId)` (Z. 867): `POST youtubei/v1/player`, Client `ANDROID_VR` (Name 28, Version 1.65.10, Oculus Quest 3) — liefert signierte googlevideo-URLs **ohne POT-Token** (JDownloader2-Ansatz, Hauptpfad).
+- `fetchAndroidVrPlayer(videoId)` (Z. 885): `POST youtubei/v1/player`, Client `ANDROID_VR` (Name 28, Version 1.65.10, Oculus Quest 3) — liefert signierte googlevideo-URLs **ohne POT-Token** (JDownloader2-Ansatz, Hauptpfad).
 - `extractStreams(pr)`: liefert `{progressive, videoOnly, audioOnly, video}` — `video` = flache Liste ≥360p, dedupliziert pro **`s.res`** (Label-Auflösung; bei Shorts ist `height` die lange Hochkant-Seite!), beste Codecs avc1 > vp9 > av01, absteigend.
 - `downloadUrl()`: manuelles 4-MB-Range-Chunking (`CHUNK_SIZE`), eigene `received`-Zählung (Yandex-`onprogress` ist nicht inkrementell), Blob → `<a download>`.
-- `runDownload(kind, stream, …)`: direkt bei progressiv; DASH-videoOnly → automatischer Merge mit bestem Audio-Stream (`pickMergeAudio`, itag 140 bevorzugt).
-- `mergeFmp4()`: bibliotheksfreies fMP4-Box-Merging (ftyp + moov mit 2 traks + moof/mdat-Segmente; ffmpeg.wasm ist durch YouTube-CSP blockiert).
+- `runDownload(kind, stream, …)` (Z. 1750): direkt bei progressiv; DASH-videoOnly → automatischer Merge mit bestem Audio-Stream (`pickMergeAudio`, Z. 779, itag 140 bevorzugt).
+- `mergeFmp4()` (Z. 669): bibliotheksfreies fMP4-Box-Merging (ftyp + moov mit 2 traks + moof/mdat-Segmente; ffmpeg.wasm ist durch YouTube-CSP blockiert).
 - Injektion: `findAnchor()`/`attachButton()` — Leiste `#top-level-buttons-computed`, 4 s Wartezeit, dann Player-Fallback über dem **ersten sichtbaren** Element (`#movie_player` kann 0×0 sein! Kandidaten-Schleife).
-- SPA: `/(watch|shorts)/`-Erkennung in `refresh()`, 1,5-s-Intervall, MutationObserver, pushState/replaceState-Override.
+- SPA: `/(watch|shorts|live)/`-Erkennung in `refresh()`, 1,5-s-Intervall, MutationObserver, pushState/replaceState-Override.
 
 ## Tests (Playwright, `.playwright-mcp\`)
 
@@ -33,7 +33,8 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 ## Grenzen
 
 - `@connect` explizit (Wildcards unzuverlässig in Yandex): `p.lbserver.xyz`, `*.lbserver.xyz`, `*.googlevideo.com` u. a.
-- Kurzlinks (youtu.be/…) sind nicht abgedeckt (nur /watch- und /shorts-Seiten).
+- Kurzlinks (youtu.be/…) sind nicht abgedeckt (nur /watch-, /shorts- und /live-Seiten).
+- Livestreams: echte Live-Übertragungen sind nicht herunterladbar (erkennbar via `isLivePlayerResponse`, Z. 872); beendete Livestreams (VODs) mit progressiven Formaten funktionieren.
 
 ## Veröffentlichung (Stand v1.0.70)
 

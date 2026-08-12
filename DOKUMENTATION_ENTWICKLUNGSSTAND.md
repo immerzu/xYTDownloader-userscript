@@ -1,4 +1,4 @@
-# xYTDownloader — Vollständige Entwicklungsdokumentation (Stand 2026-08-05)
+# xYTDownloader — Vollständige Entwicklungsdokumentation (Stand 2026-08-12, v1.0.70)
 
 > Zweck: Ist-Zustand-Dokumentation des Projekts (v1.0.70). Synchronisiert mit BERICHT.md (§1–§34) und den Builds in `Ausgabe\`.
 > Erstellt von: Reasonix-Agent (Arbeitsprojekt des Nutzers Ede).
@@ -12,35 +12,33 @@
 ```
 F:\001_Coding_Projekte\xYTDownloader\
 ├── xyt-downloader.user.js                  ← ARBEITSVERSION (v1.0.70, 1972 Zeilen, ~91,5 KB) — projekteigener Code
-├── BERICHT.md                              ← Abschlussbericht/Projektdoku (v1.0.0–v1.0.70, §1–§34)
+├── BERICHT.md                              ← Abschlussbericht/Projektdoku (v1.0.0–v1.0.66 als §1–§39; v1.0.67–70 ergänzt)
 ├── AGENTS.md                               ← Projekt-Anweisungen für Agenten (Build-Regeln, Architektur, Tests)
 ├── DOKUMENTATION_ENTWICKLUNGSSTAND.md      ← diese Datei (Ist-Zustand v1.0.70)
 ├── README.md                               ← Repo-README (dreisprachig EN/DE/RU, im GitHub-Repo)
+├── description.md                          ← Greasy-Fork-Zusatzinfos (DE → RU → EN, mehrzeilig)
 ├── ANALYSE_JD2_YOUTUBE.md                  ← historische Analyse: JD2-Protokoll vs. Userscript (Basis v1.0.18)
 ├── ANALYSE_DISKREPANZ_PLAYWRIGHT_VS_YANDEX.md ← historische Analyse: Playwright-vs-Yandex-Diskrepanz (Basis v1.0.25)
-├── Ausgabe\                                ← Build-Ordner (versionierte Builds v1.0.0 … v1.0.70, alte bleiben erhalten)
-│   ├── xyt-downloader-v1.0.0.user.js       (erster Build, veraltet)
-│   ├── …                                   (v1.0.1 … v1.0.37; v1.0.15 wurde nie gebaut)
-│   ├── xyt-downloader-v1.0.38.user.js
-│   ├── xyt-downloader-v1.0.39.user.js
-│   ├── xyt-downloader-v1.0.40.user.js
-│   ├── xyt-downloader-v1.0.41.user.js
-│   ├── xyt-downloader-v1.0.42.user.js
-│   ├── xyt-downloader-v1.0.43.user.js
-│   ├── xyt-downloader-v1.0.44.user.js
-│   ├── xyt-downloader-v1.0.45.user.js
-│   ├── xyt-downloader-v1.0.46.user.js
-│   ├── xyt-downloader-v1.0.47.user.js
-│   ├── xyt-downloader-v1.0.48.user.js
-│   ├── xyt-downloader-v1.0.49.user.js
+├── memory\FACT.md                           ← Projekt-Fact-Sheet (v1.0.70)
+├── memory\HANDOVER_v1.0.70.md              ← Handover-Doku (v1.0.70)
+├── Ausgabe\                                ← Build-Ordner (nur die 9 aktuellen Builds, alte wurden aufgeräumt):
+│   ├── xyt-downloader-v1.0.41-top.user.js  (Experiment-Snapshot)
+│   ├── xyt-downloader-v1.0.49-top.user.js  (Experiment-Snapshot)
+│   ├── xyt-downloader-v1.0.49.user.js      (stabiler Stand)
+│   ├── xyt-downloader-v1.0.66.user.js      (Experiment: GM_download)
+│   ├── xyt-downloader-v1.0.67.user.js      (Experiment: <a download>)
+│   ├── xyt-downloader-v1.0.68-top.user.js  (identisch mit v1.0.68)
+│   ├── xyt-downloader-v1.0.68.user.js      (Pur v1.0.49-Code)
+│   ├── xyt-downloader-v1.0.69.user.js      (v1.0.68 + 3 Features)
 │   └── xyt-downloader-v1.0.70.user.js      ← AKTUELLER BUILD (identisch mit Arbeitsversion, cmp-verifiziert,
-│                                             MD5 96854c59c67a3bb5d6abbc6a581f3a40, API-Key = Platzhalter)
+│                                             MD5 16492a1b86a9aea97e4d804e4cebae89, API-Key = Platzhalter)
 ├── Youtube Tools All in one local download mp3 mp4 HIGT QUALITY return dislikes and more-2.5.txt
 │                                           ← FREMDES Referenz-Script (GreasyFork „Youtube Tools All in one" v2.5, MIT, 267 KB)
 │                                             Nur historische Quelle für die savenow/dubs.io-API-Parameter
 │                                             (deaktivierter Fallback-Pfad, siehe Abschnitt 3.1). KEIN eigener Code.
 ├── .playwright-mcp\                        ← AUTOMATISCH generiert (Playwright-Test-Artefakte: Snapshots, Console-Logs, heruntergeladene Testdateien)
-└── .reasonix\                              ← AUTOMATISCH generiert (Reasonix-Metadaten, nicht projektrelevant)
+├── .reasonix\                              ← AUTOMATISCH generiert (Reasonix-Metadaten, nicht projektrelevant)
+└── *.yml / *.png / console-dedup.txt       ← lokale Debug-Artefakte aus früheren Sitzungen (gitignored, nicht projektrelevant)
 ```
 
 **Abhängigkeiten:** Keine (kein package.json, keine requirements.txt). Das Script ist **reines Browser-JavaScript ohne Framework/Bibliotheken**; einzige Laufzeit-Abhängigkeiten sind die Tampermonkey-GM-APIs und YouTube (Innertube-Player-Endpoint).
@@ -75,7 +73,7 @@ F:\001_Coding_Projekte\xYTDownloader\
 
 **Veraltet/deaktiviert (bleibt als Fallback-Code erhalten):** savenow.to / dubs.io-Extern-API (`DEAKTIVIERTER FALLBACK-PFAD`). Wird seit v1.0.19 nicht mehr aufgerufen, **darf nicht entfernt oder reaktiviert werden** (Nutzerentscheidung). Die Analyse der frühen Versionen (v1.0.0–v1.0.18) ist in den historischen ANALYSE-Dateien dokumentiert.
 
-**Codestellen (v1.0.70):** `getVisitorData()` (Z. 850), `fetchAndroidVrPlayer()` (Z. 867), `extractStreams()` (Z. 986), `downloadUrl()` (Z. 378), `mergeFmp4()` (Z. 664), `pickMergeAudio()` (Z. 774), `runDownload()` (Z. 1708).
+**Codestellen (v1.0.70):** `getVisitorData()` (Z. 849), `fetchAndroidVrPlayer()` (Z. 885), `extractStreams()` (Z. 1013), `downloadUrl()` (Z. 383), `mergeFmp4()` (Z. 669), `pickMergeAudio()` (Z. 779), `runDownload()` (Z. 1750).
 
 ### 3.2 Bibliothek/Werkzeug
 **Keine** (yt-dlp/pytube/ffmpeg werden NICHT verwendet). Der DASH-Merge ist ein **bibliotheksfreies fMP4-Box-Merging** (`mergeFmp4`, seit v1.0.33): beide YouTube-DASH-Streams sind fMP4 (ftyp + moov(mvhd,mvex,trak) + moof/mdat-Segmente); der Merge baut EINE moov mit beiden traks (Audio-track_id 1→2), patcht alle Audio-tfhd und konkateniert Video- + Audio-Segmente. ffmpeg.wasm ist durch die YouTube-CSP (worker-src) blockiert — deshalb der eigene Merger.
@@ -103,7 +101,7 @@ F:\001_Coding_Projekte\xYTDownloader\
 
 ## 4. Fehleranalyse: Chronologie der behobenen Ursachen (v1.0.0 → v1.0.70)
 
-Vollständige, detaillierte Chronologie mit Codestellen und Tests: siehe **BERICHT.md** (§1–§21). Kurzfassung der wichtigsten Meilensteine:
+Vollständige, detaillierte Chronologie mit Codestellen und Tests: siehe **BERICHT.md** (§1–§43). Kurzfassung der wichtigsten Meilensteine:
 
 | Version | Fix / Feature |
 |---|---|
@@ -123,7 +121,12 @@ Vollständige, detaillierte Chronologie mit Codestellen und Tests: siehe **BERIC
 | v1.0.46 | **Veröffentlichung** als „xYTDownloader" (Greasy Fork + Reddit), engl. Metablock/Kommentarkopf |
 | v1.0.47/48 | Button-Deckkraft: 60 % NUR über dem Video (Overlay-Modus), Leiste 100 %, Hover 100 % |
 | v1.0.49 | **Sicherheits-Update**: API-Key (savenow-Fallback) → Platzhalter in allen öffentlichen Quellen; **GitHub-Repo** erstellt |
-| v1.0.70 | **Bugfix**: pickMergeAudio verwirft WEBM/Opus-Audio beim DASH-Merge (vorher kaputte Datei); DL-URL-PARAMS-Präzedenz |
+| v1.0.50 | **Bugfix**: pickMergeAudio verwirft WEBM/Opus-Audio beim DASH-Merge (vorher kaputte Datei); DL-URL-PARAMS-Präzedenz |
+| v1.0.53/54 | Livestreams sauber abfangen (`isLivePlayerResponse`); BUGFIX beendete Livestreams (VODs) |
+| v1.0.55–67 | **Experimente** (pageFetch, JD2-Methode, GM_download, <a download>) — wurden alle zurückgerollt, NICHT verwenden |
+| v1.0.68 | **Pur v1.0.49-Code** (nur Versionsnummer geändert) — Rückkehr zum bewiesenen Stand |
+| v1.0.69 | v1.0.68 + 3 sinnvolle Features: dreisprachige @description (DE→EN→RU), Livestream-Erkennung, Live-VOD-Meldung |
+| v1.0.70 | @description auf /watch, /shorts und /live erweitert + doppeltes Leerzeichen entfernt |
 
 **Bekannte Restpunkte (kein offener Bug):** progressives 720p existiert über ANDROID_VR nicht (nur itag 18 = 360p/240p) — höhere Auflösungen laufen automatisch über den DASH-Merge. WEBM/Opus-Audio wird nicht gemerged (MP4-Container; `pickMergeAudio` wählt MP4/AAC, itag 140 bevorzugt).
 
@@ -144,7 +147,11 @@ Aktuelle Real-Tests (Playwright + echter ANDROID_VR-Request) je Version: siehe *
 | v1.0.46 | Veröffentlichung real: Greasy-Fork-Seite (v1.0.46) + Reddit-Post online |
 | v1.0.47/48 | Button-Deckkraft: 60 % NUR über dem Video (Overlay-Modus), Leiste 100 %, Hover 100 % — real per getComputedStyle |
 | v1.0.49 | Sicherheits-Update: API-Key → Platzhalter in allen öffentlichen Quellen; GitHub-Repo erstellt |
-| v1.0.70 | Bugfix-Test: nur-webm → kein Merge (null); gemischt → itag 140 (unverändert); E2E-Panel intakt |
+| v1.0.50 | Bugfix-Test: nur-webm → kein Merge (null); gemischt → itag 140 (unverändert); E2E-Panel intakt |
+| v1.0.53/54 | Livestreams: sauberes Abfangen + VOD-Fix (real per Playwright) |
+| v1.0.68 | Pur v1.0.49-Code (Yandex-Fehler war Tampermonkey-Korruption, nicht das Script) |
+| v1.0.69 | 3 Features (dreisprachige @description, Livestream-Erkennung, Live-VOD-Meldung) |
+| v1.0.70 | @description /live erweitert; E2E-Panel intakt |
 
 **Testvideos:** `dQw4w9WgXcQ` (Rick, 4K), `vE-cOL98DPk` (Short, funktioniert), `aXzVB3nT_3M` (Short, YouTube meldet „nicht verfügbar" — kein Script-Bug).
 
@@ -157,7 +164,7 @@ Aktuelle Real-Tests (Playwright + echter ANDROID_VR-Request) je Version: siehe *
 | Greasy Fork | https://greasyfork.org/de/scripts/589972-xytdownloader | ✅ veröffentlicht (v1.0.70, Konto `immerzu`) |
 | Install-Link | https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js | ✅ |
 | **Webhook-Auto-Update** | GitHub-Push → Greasy Fork (Payload `/users/1629833-immerzu/webhook`, json, push-Event, Response 200) | ✅ aktiv seit 2026-08-05 |
-| GitHub-Repo | https://github.com/immerzu/xYTDownloader-userscript | ✅ öffentlich (Branch main, 2 Commits) |
+| GitHub-Repo | https://github.com/immerzu/xYTDownloader-userscript | ✅ öffentlich (Branch main, 29 Commits) |
 | Reddit r/userscripts | https://www.reddit.com/r/userscripts/comments/1vg0oiz/script_xytdownloader_oneclick_youtube_downloader/ | ✅ veröffentlicht |
 | ru-board forum 25 | https://forum.ru-board.com/topic.cgi?forum=25&topic=7181 | ✅ veröffentlicht (Account IgorRolf) |
 
@@ -167,8 +174,8 @@ Aktuelle Real-Tests (Playwright + echter ANDROID_VR-Request) je Version: siehe *
 
 ## 7. Dateien-Inhalte
 
-- **Volltext der Arbeitsversion:** siehe `xyt-downloader.user.js` (1972 Zeilen, ~91,5 KB) und identisch `Ausgabe\xyt-downloader-v1.0.70.user.js` (cmp-verifiziert, MD5 `96854c59c67a3bb5d6abbc6a581f3a40`, API-Key = Platzhalter).
-- **BERICHT.md:** vollständige Projektdoku (Erfolgskriterien, Loop, Fixes v1.0.0–v1.0.70, §1–§34).
+- **Volltext der Arbeitsversion:** siehe `xyt-downloader.user.js` (1972 Zeilen, ~91,5 KB) und identisch `Ausgabe\xyt-downloader-v1.0.70.user.js` (cmp-verifiziert, MD5 `16492a1b86a9aea97e4d804e4cebae89`, API-Key = Platzhalter).
+- **BERICHT.md:** vollständige Projektdoku (Erfolgskriterien, Loop, Fixes v1.0.0–v1.0.66 als §1–§39; v1.0.67–70 ergänzt).
 - **README.md:** Repo-README, dreisprachig (EN/DE/RU).
 - **ANALYSE_JD2_YOUTUBE.md / ANALYSE_DISKREPANZ_PLAYWRIGHT_VS_YANDEX.md:** historische Analysen (Basis v1.0.18 bzw. v1.0.25) — dokumentieren den damaligen Stand, nicht aktualisiert.
 - **Referenz-Script (`…-2.5.txt`, 267 KB):** fremd (GreasyFork, MIT), nur historische API-Parameterquelle für den deaktivierten Fallback; wird nicht ausgeliefert.
@@ -178,14 +185,14 @@ Aktuelle Real-Tests (Playwright + echter ANDROID_VR-Request) je Version: siehe *
 
 ## 8. Git-Status
 
-**Git-Repository vorhanden (seit 2026-08-05).** Remote: `https://github.com/immerzu/xYTDownloader-userscript` (öffentlich, Branch `main`). Erster Commit: `2386771` („xYTDownloader v1.0.48 …"). 7 Dateien im Repo: `.gitignore`, `README.md` (dreisprachig EN/DE/RU), `xyt-downloader.user.js` (API-Key = Platzhalter `HIER_API_KEY_EINFUEGEN`), `AGENTS.md`, `BERICHT.md`, `DOKUMENTATION_ENTWICKLUNGSSTAND.md`, `ANALYSE_*.md`. Versionierung zusätzlich über die `@version`-Zeile im Metablock + Build-Dateien in `Ausgabe\` (lokal, nicht im Repo).
+**Git-Repository vorhanden (seit 2026-08-05).** Remote: `https://github.com/immerzu/xYTDownloader-userscript` (öffentlich, Branch `main`). Erster Commit: `2386771` („xYTDownloader v1.0.48 …"), aktuell 29 Commits (Stand 2026-08-12). 11 Dateien im Repo: `.gitignore`, `README.md` (dreisprachig EN/DE/RU), `xyt-downloader.user.js` (API-Key = Platzhalter `HIER_API_KEY_EINFUEGEN`), `AGENTS.md`, `BERICHT.md`, `DOKUMENTATION_ENTWICKLUNGSSTAND.md`, `description.md`, `ANALYSE_JD2_YOUTUBE.md`, `ANALYSE_DISKREPANZ_PLAYWRIGHT_VS_YANDEX.md`, `memory/FACT.md`, `memory/HANDOVER_v1.0.70.md`. Ausgabe\ und .playwright-mcp\ sind gitignored (nicht im Repo).
 
 ---
 
 ## 9. Wichtigste Konventionen / offene Punkte für die Weiterarbeit
 
 - **Build-Regel (verbindlich):** Neuer Build → nach `Ausgabe\`, `@version` UND `MY_VERSION` anheben (nie dieselbe Version zweimal), Dateiname `xyt-downloader-v<version>.user.js`; Arbeitsversion bleibt `xyt-downloader.user.js` im Stamm; per `cmp` + `md5sum` verifizieren; BERICHT.md pro Build aktualisieren.
-- **Kein Commit/Push/Deployment per Git** (kein Repo vorhanden); Veröffentlichung nur über Greasy Fork (Nutzer-Freigabe).
+- **Git-Nutzung:** Commits/Pushes sind ERLAUBT und erwünscht (Git-Repo vorhanden, siehe §8) — nur keine sensiblen Daten hochladen (API-Key bleibt Platzhalter). Kein Tag/Release per Git.
 - **savenow/dubs.io-Fallback-Code deaktiviert lassen**, nie reaktivieren (Nutzerentscheidung).
 - **Offen (Design-Entscheidungen, nicht beauftragt):** progressives 720p+ gibt es über ANDROID_VR nicht (DASH-Merge ist der Weg); WEBM/Opus-Merge wird nicht unterstützt.
-- **Bekannte Einschränkungen:** age-restricted/private Videos, Livestreams nicht verarbeitbar; `youtu.be`-Kurzlinks nicht abgedeckt (nur /watch und /shorts); API-Key des deaktivierten Fallbacks liegt offen im Script.
+- **Bekannte Einschränkungen:** age-restricted/private Videos, echte Livestreams nicht verarbeitbar; `youtu.be`-Kurzlinks nicht abgedeckt (nur /watch, /shorts und /live); API-Key des deaktivierten Fallbacks liegt als Platzhalter im Script.

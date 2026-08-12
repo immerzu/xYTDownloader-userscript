@@ -10,21 +10,21 @@ One-click YouTube video downloader userscript for Tampermonkey / Violentmonkey.
 
 **English 🇬🇧**
 
-One-click YouTube video downloader userscript. Open any video or Short, click the small download button, pick a quality — done. No external download API, no API keys. Direct ANDROID_VR Innertube client, automatic DASH merging for high resolutions with sound.
+One-click YouTube video downloader userscript. Open any video, Short or finished livestream, click the small download button, pick a quality — done. No external download API, no API keys. Direct ANDROID_VR Innertube client, automatic DASH merging for high resolutions with sound.
 
 **Deutsch 🇩🇪**
 
-YouTube-Downloader-Userscript mit einem Klick. Video oder Short öffnen, auf den kleinen Download-Button klicken, Qualität wählen — fertig. Keine externe Download-API, keine API-Schlüssel. Direkter ANDROID_VR-Innertube-Client, automatisches DASH-Merging für hohe Auflösungen mit Ton.
+YouTube-Downloader-Userscript mit einem Klick. Video, Short oder beendeten Livestream öffnen, auf den kleinen Download-Button klicken, Qualität wählen — fertig. Keine externe Download-API, keine API-Schlüssel. Direkter ANDROID_VR-Innertube-Client, automatisches DASH-Merging für hohe Auflösungen mit Ton.
 
 **Русский 🇷🇺**
 
-Пользовательский скрипт для скачивания видео с YouTube в один клик. Откройте любое видео или Short, нажмите маленькую кнопку загрузки, выберите качество — готово. Без внешних API и ключей. Прямой Innertube-клиент ANDROID_VR, автоматическое слияние DASH для высоких разрешений со звуком.
+Пользовательский скрипт для скачивания видео с YouTube в один клик. Откройте любое видео, Short или завершённый стрим, нажмите маленькую кнопку загрузки, выберите качество — готово. Без внешних API и ключей. Прямой Innertube-клиент ANDROID_VR, автоматическое слияние DASH для высоких разрешений со звуком.
 
 ---
 
 ## Features / Funktionen / Возможности
 
-- Works on `/watch` and `/shorts` (including scrolling between Shorts)
+- Works on `/watch` and `/shorts` (including scrolling between Shorts), plus `/live` (finished livestreams / VODs)
 - All qualities up to 4K, each with audio
 - Automatic DASH merging for high resolutions (video + audio into one MP4)
 - Direct download from YouTube (ANDROID_VR Innertube client — same method JDownloader 2 uses)
@@ -40,7 +40,7 @@ YouTube-Downloader-Userscript mit einem Klick. Video oder Short öffnen, auf den
 
 ## Usage / Verwendung / Использование
 
-1. Open any YouTube video (`/watch`) or Short (`/shorts`).
+1. Open any YouTube video (`/watch`), Short (`/shorts`) or finished livestream (`/live`).
 2. Click the download button (bottom-right of the player, or in the action bar).
 3. Pick a quality — the file is saved to your download folder.
 
