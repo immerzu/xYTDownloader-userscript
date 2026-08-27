@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.70
+// @version      1.0.76
 // @description YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch, /shorts und /live. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton. / One-click YouTube video downloader. Supports all qualities up to 4K with audio. Works on /watch, /shorts and /live. No external APIs, direct ANDROID_VR client. DASH merging for high resolutions with sound. / Пользовательский скрипт для скачивания видео с YouTube в один клик. Поддерживает все качества до 4K со звуком. Работает на /watch, /shorts и /live. Без внешних API, прямой клиент ANDROID_VR. Слияние DASH для высоких разрешений со звуком.
 // @author       Ede
 // @match        *://www.youtube.com/*
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.70';
+  const MY_VERSION = '1.0.76';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -162,18 +162,22 @@
   // (ohne POT-Token, ohne 403 — im Gegensatz zum WEB-Client).
   // -------------------------------------------------------------------------
   const YT_PLAYER_ENDPOINT = 'https://www.youtube.com/youtubei/v1/player?prettyPrint=false';
+  // v1.0.72: VISIONOS-Client (JD2-Stand, im eigenen JD2-Log verifiziert). JD2
+  // lädt damit Streams via `&range=`-URL-Parameter problemlos — unser bisheriger
+  // ANDROID_VR-Client lieferte URLs, bei denen YouTube Range-Requests mit 403
+  // abwies. VISIONOS liefert `c=VISIONOS`-Stream-URLs, die Range nativ erlauben.
   const ANDROID_VR_CONFIG = {
-    clientName: 'ANDROID_VR',
-    clientVersion: '1.65.10',
-    deviceMake: "'Oculus",
-    deviceModel: "'Quest 3",
+    clientName: 'VISIONOS',
+    clientVersion: '1.02',
+    deviceMake: 'Apple',
+    deviceModel: 'RealityDevice17,1',
     androidSdkVersion: 32,
-    userAgent: 'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
-    osName: 'Android',
-    osVersion: '12L',
-    hl: 'de',
-    timeZone: 'Europe/Berlin',
-    utcOffsetMinutes: 120
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
+    osName: 'visionOS',
+    osVersion: '26.5.23O471',
+    hl: 'en',
+    timeZone: 'UTC',
+    utcOffsetMinutes: 0
   };
 
   // Qualitätsstufen (Höhe -> API-Formatwert). Reihenfolge = Anzeige.
@@ -380,6 +384,71 @@
   // -------------------------------------------------------------------------
   const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB je Chunk (JD2 nutzt ~4,8 MB)
 
+  // v1.0.71: Browser-Header, die YouTube für googlevideo.com-Range-Anfragen
+  // voraussetzt. Ohne diese Header antwortet YouTube mit 403 Forbidden
+  // (leere Chunk-Antwort). GM_xmlhttpRequest ergänzt KEINEN Referer
+  // automatisch — wir müssen ihn explizit setzen.
+  const VIDEO_REQUEST_HEADERS = {
+    'Origin': 'https://www.youtube.com',
+    'Referer': 'https://www.youtube.com/',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
+    'Sec-CH-UA': '"Not/A)Brand";v="99", "Google Chrome";v="151", "Chromium";v="151"',
+    'Sec-CH-UA-Mobile': '?0',
+    'Sec-CH-UA-Platform': '"Windows"',
+    'Sec-CH-UA-Bitness': '"64"',
+    'Sec-CH-UA-Arch': '"x86"',
+    'Sec-CH-UA-Wow64': '?0',
+    'Sec-CH-UA-Platform-Version': '"19.0.0"',
+    'Accept': '*/*',
+    'Accept-Language': 'de,en;q=0.9'
+  };
+
+  // Header-Builder: Range-Header (vom Aufrufer gesetzt) überschreibt nicht,
+  // aber alle anderen Browser-Header werden ergänzt, wenn fehlend.
+  function buildVideoHeaders(extra) {
+    const h = Object.assign({}, VIDEO_REQUEST_HEADERS);
+    if (extra) {
+      for (const k in extra) {
+        if (extra.hasOwnProperty(k)) h[k] = extra[k];
+      }
+    }
+    return h;
+  }
+
+  // v1.0.72: Range-Chunk per native window.fetch laden. Die Range wird als
+  // `&range=START-END` DIREKT in die Stream-URL geschrieben (JD2-Methode,
+  // im JD2-Live-Log verifiziert — JD2 lädt damit Audio itag 140 und Video
+  // itag 401 komplett per `&range=` + `&ratebypass=yes`). Zusätzlich werden
+  // wie JD2 der `Referer`-Header auf die googlevideo-URL selbst, ein Desktop-UA
+  // und `Accept-Encoding: identity` gesetzt — das komplettiert das funktionie-
+  // rende Request-Set. Liefert {status, bytes, ok, headers}.
+  function fetchRangeChunk(url, start, end) {
+    let u = String(url);
+    if (!/range=/i.test(u)) {
+      u += (u.indexOf('?') >= 0 ? '&' : '?') + 'range=' + start + '-' + end;
+    }
+    if (!/ratebypass=/i.test(u)) {
+      u += '&ratebypass=yes';
+    }
+    // Referer auf die googlevideo-URL selbst (JD2-Stand); UA/Firefox-Desktop;
+    // kein Accept-Encoding (identisch), damit die Rohbytes nicht dekomprimiert werden.
+    const host = u.split('?')[0];
+    return fetch(u, {
+      headers: {
+        'Referer': host,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:76.0) Gecko/20100101 Firefox/76.0',
+        'Accept-Encoding': 'identity'
+      }
+    }).then(function (res) {
+      if (!res.ok) return { status: res.status, bytes: null, ok: false, headers: res.headers };
+      return res.arrayBuffer().then(function (ab) {
+        return { status: res.status, bytes: ab, ok: true, headers: res.headers };
+      });
+    }).catch(function (err) {
+      return { status: 0, bytes: null, ok: false, err: err, headers: null };
+    });
+  }
+
   function downloadUrl(url, filename, expectedSize) {
     let knownTotal = Number(expectedSize) || 0;   // v1.0.38: let, damit die Probe die Größe nachtragen kann
     if (typeof GM_xmlhttpRequest !== 'function') {
@@ -415,45 +484,33 @@
     function probeSize() {
       if (probed || knownTotal > 0) { nextChunk(0); return; }
       probed = true;
-      try {
-        GM_xmlhttpRequest({
-          method: 'GET',
-          url: String(url),
-          headers: { 'Range': 'bytes=0-0' },
-          responseType: 'arraybuffer',
-          timeout: 15000,
-          onload: function (res) {
-            try {
-              const cr = String(res && res.responseHeaders || '');
-              const m = cr.match(/content-range:\s*bytes\s+0-0\/(\d+)/i);
-              if (res && res.status === 206 && m && Number(m[1]) > 0) {
-                knownTotal = Number(m[1]);
-                dbg('[xYT] DL-PROBE: Content-Range → Gesamtgröße ' + knownTotal + ' B');
-                nextChunk(0);
-                return;
-              }
-              // Server lieferte 200 (Range ignoriert) → komplette Datei schon da
-              if (res && res.status === 200 && res.response && res.response.byteLength > 0) {
-                chunks.push(res.response);
-                received = res.response.byteLength;
-                dbg('[xYT] DL-PROBE: Status 200, komplette Datei (' + received + ' B) direkt übernommen');
-                finishDownload();
-                return;
-              }
-              console.warn('[xYT] DL-PROBE: keine Größe ermittelbar (Status ' + (res && res.status) + ') — Fortschritt ohne %');
+      // v1.0.71: native fetch (konsistent mit den Chunks; kein 403 in der Sandbox).
+      fetchRangeChunk(url, 0, 0).then(function (r) {
+        try {
+          const cr = String(r.headers && r.headers.get && (r.headers.get('content-range') || '') || '');
+          const m = cr.match(/bytes\s+0-0\/(\d+)/i);
+          if (r.status === 206) {
+            knownTotal = Number(r.bytes ? r.bytes.byteLength : 1) + 0;
+            const m2 = cr.match(/\/\s*(\d+)/i);
+            if (m2 && Number(m2[1]) > 0) {
+              knownTotal = Number(m2[1]);
+              dbg('[xYT] DL-PROBE: Content-Range → Gesamtgröße ' + knownTotal + ' B');
               nextChunk(0);
-            } catch (e2) {
-              console.warn('[xYT] DL-PROBE-Fehler:', e2);
-              nextChunk(0);
+              return;
             }
-          },
-          onerror: function () { nextChunk(0); },
-          ontimeout: function () { nextChunk(0); }
-        });
-      } catch (e) {
-        console.warn('[xYT] DL-PROBE-Exception:', e);
-        nextChunk(0);
-      }
+          }
+          // Status 206, aber kein Content-Range → bekannte Größe nutzen wenn vorhanden
+          if (r.status === 206 && r.bytes && r.bytes.byteLength > 0) {
+            chunks.push(r.bytes);
+            received = r.bytes.byteLength;
+          }
+          console.warn('[xYT] DL-PROBE: keine Größe ermittelbar (Status ' + r.status + ') — Fortschritt ohne %');
+          nextChunk(received);
+        } catch (e2) {
+          console.warn('[xYT] DL-PROBE-Fehler:', e2);
+          nextChunk(received);
+        }
+      });
     }
 
     function nextChunk(start) {
@@ -468,56 +525,35 @@
       }
       // DIAGNOSE: Jede Chunk-Anfrage mit exakter Range protokollieren
       dbg('[xYT] DL-CHUNK-REQ: Range=bytes ' + start + '-' + end + ' (erwartete Chunk-Größe max ' + CHUNK_SIZE + ' B, knownTotal=' + knownTotal + ')');
-      try {
-        GM_xmlhttpRequest({
-          method: 'GET',
-          url: String(url),
-          headers: { 'Range': 'bytes=' + start + '-' + end },
-          responseType: 'arraybuffer',
-          timeout: 60000,
-          onload: function (res) {
-            try {
-              const buf = res && res.response;
-              if (!buf || !buf.byteLength) throw new Error('leere Chunk-Antwort (Status ' + (res && res.status) + ')');
-              chunks.push(buf);
-              received += buf.byteLength;
-              // DIAGNOSE: Was kam real zurück? Status 206 = Range ok, 200 = kompletter Body!
-              dbg('[xYT] DL-CHUNK-OK: Status=' + (res && res.status) + ' | angefordert=' + (end - start + 1) + ' B | erhalten=' + buf.byteLength + ' B | received-gesamt=' + received);
-              if (res && res.status === 200 && knownTotal > 0 && buf.byteLength >= knownTotal) {
-                // Server hat Range ignoriert und die KOMPLETTE Datei geliefert → fertig.
-                console.warn('[xYT] DL-CHUNK-WARNUNG: Server lieferte Status 200 (kompletter Body) statt 206 — Range ignoriert. Datei wird als Ganzes übernommen.');
-                finishDownload();
-                return;
-              }
-              reportProgress();
-              if (knownTotal > 0) {
-                nextChunk(received); // nächster Chunk ab aktueller Position
-              } else if (buf.byteLength < CHUNK_SIZE) {
-                finishDownload(); // letzter Chunk bei unbekannter Größe
-              } else {
-                nextChunk(received);
-              }
-            } catch (e3) {
-              console.warn('[xYT] Chunk-Fehler, Fallback GM_download:', e3);
-              fallbackDownload(url, filename);
-            }
-          },
-          onerror: function (err) {
-            console.warn('[xYT] Chunk onerror, Fallback GM_download:', err);
-            fallbackDownload(url, filename);
-          },
-          ontimeout: function () {
-            console.warn('[xYT] Chunk Timeout, Fallback GM_download');
-            fallbackDownload(url, filename);
-          }
-        });
-      } catch (eSync) {
-        // v1.0.42: GM_xmlhttpRequest kann auch SYNCHRON werfen (z. B. ungültige
-        // URL). Vorher blieb der Download still stehen (kein Fallback). Jetzt
-        // sauber in den GM_download-Fallback.
-        console.warn('[xYT] Chunk-Request synchron fehlgeschlagen, Fallback GM_download:', eSync);
+      // v1.0.71: native fetch statt GM_xmlhttpRequest (siehe fetchRangeChunk-Kommentar).
+      fetchRangeChunk(url, start, end).then(function (r) {
+        if (!r.ok || !r.bytes) {
+          throw new Error('leere Chunk-Antwort (Status ' + r.status + ')');
+        }
+        const buf = r.bytes;
+        const prev = received;
+        chunks.push(buf);
+        received += buf.byteLength;
+        // DIAGNOSE: Was kam real zurück? Status 206 = Range ok, 200 = kompletter Body!
+        dbg('[xYT] DL-CHUNK-OK: Status=' + r.status + ' | angefordert=' + (end - start + 1) + ' B | erhalten=' + buf.byteLength + ' B | received-gesamt=' + received);
+        if (r.status === 200 && knownTotal > 0 && buf.byteLength >= knownTotal) {
+          // Server hat Range ignoriert und die KOMPLETTE Datei geliefert → fertig.
+          console.warn('[xYT] DL-CHUNK-WARNUNG: Status 200 (kompletter Body) statt 206 — Range ignoriert.');
+          finishDownload();
+          return;
+        }
+        reportProgress();
+        if (knownTotal > 0) {
+          nextChunk(prev + buf.byteLength);
+        } else if (buf.byteLength < CHUNK_SIZE) {
+          finishDownload();
+        } else {
+          nextChunk(prev + buf.byteLength);
+        }
+      }).catch(function (e3) {
+        console.warn('[xYT] Chunk-Fehler, Fallback GM_download:', e3);
         fallbackDownload(url, filename);
-      }
+      });
     }
 
     function finishDownload() {
@@ -581,12 +617,94 @@
   // Gleiche Range-Chunking-Methode wie downloadUrl, aber Promise-basiert:
   // liefert am Ende ein Uint8Array, das an mergeFmp4 übergeben werden kann.
   // onProgress(received, knownTotal) wird bei jedem Chunk aufgerufen.
+  // v1.0.72: `refreshInfo` = {itag, videoId}. Fällt ein Chunk mit 403 aus,
+  // wird automatisch eine FRISCHE Player-Response geholt (neue signierte URL
+  // für denselben itag) und ab der letzten Byte-Position fortgesetzt — die
+  // yt-dlp/JD2-Strategie gegen YouTube-URL-Limits.
   // -------------------------------------------------------------------------
-  function downloadStreamBytes(url, expectedSize, onProgress) {
+  function downloadStreamBytes(url, expectedSize, onProgress, refreshInfo, initRange) {
     return new Promise(function (resolve, reject) {
       const knownTotal = Number(expectedSize) || 0;
       const chunks = [];
       let received = 0;
+      // init-Segment (ftyp+moov bei segmentierten AV1/VP9-Streams) separat laden
+      let initLoaded = false;
+      const initBytes = [];
+      let initDone = false;
+      // v1.0.72: max. 3 Frisch-URL-Retries, damit ein hartnäckiger 403 nicht
+      // in einer Endlosschleife endet.
+      let urlTries = 0;
+      const MAX_URL_TRIES = 3;
+      // aktuelle URL (wird nach einem 403 durch die frische ersetzt)
+      let currentUrl = String(url);
+
+      // v1.0.73: init-Segment (Bytes initStart..initEnd) zuerst laden. Es muss
+      // VOR den Medien-Daten im resultierenden Byte-Strom stehen, damit
+      // mergeFmp4 die ftyp/moov findet. Nur bei segmentierten Codecs
+      // (AV1/VP9) nötig — bei H.264 liegen ftyp+moov bereits am Dateianfang
+      // und würden sonst doppelt geladen.
+      const isSegmentedCodec = initRange && initRange.codec && (/av01|vp9|avc3/i.test(String(initRange.codec)));
+      // v1.0.74: init-Segment umfasst ftyp+moov, das bei YouTube bis
+      // indexRange.end reicht (nicht nur initRange.end). Der moov-Body liegt
+      // im indexRange-Teil. Also 0..indexEnd laden.
+      function initEndOffset() {
+        return (initRange && initRange.indexEnd >= 0) ? Number(initRange.indexEnd) : (initRange ? Number(initRange.initEnd) : -1);
+      }
+      function needsInit() {
+        return isSegmentedCodec && initEndOffset() >= 0;
+      }
+      function loadInit() {
+        if (initDone || !needsInit()) {
+          initDone = true; initLoaded = true;
+          nextChunk(0);
+          return;
+        }
+        const start = 0;
+        const end = initEndOffset();
+        fetchRangeChunk(currentUrl, start, end).then(function (r) {
+          if (!r.ok || !r.bytes) {
+            console.warn('[xYT] init-Segment fehlgeschlagen (Status ' + r.status + ') — setze ohne init fort.');
+            initDone = true; initLoaded = true;
+            nextChunk(mediaStartOffset());
+            return;
+          }
+          initBytes.push(r.bytes);
+          initDone = true; initLoaded = true;
+          received += r.bytes.byteLength;
+          dbg('[xYT] INIT-SEGMENT geladen: ' + r.bytes.byteLength + ' B (Bytes ' + start + '-' + end + ')');
+          nextChunk(mediaStartOffset());
+        });
+      }
+
+      function refreshUrl() {
+        if (!refreshInfo || !refreshInfo.videoId || !refreshInfo.itag || urlTries >= MAX_URL_TRIES) {
+          return Promise.resolve(null);
+        }
+        urlTries++;
+        dbg('[xYT] 403 → hole FRISCHE URL (Versuch ' + urlTries + '/' + MAX_URL_TRIES + ', itag ' + refreshInfo.itag + ') ab Byte ' + received);
+        return fetchAndroidVrPlayer(refreshInfo.videoId).then(function (pr) {
+          const streams = extractStreams(pr);
+          // passenden Stream finden (für Audio- oder Video-Downstream)
+          const mine = (refreshInfo.kind === 'audio')
+            ? streams.audioOnly.find(function (s) { return s.itag === refreshInfo.itag; })
+            : streams.video.find(function (s) { return s.itag === refreshInfo.itag; });
+          if (mine && mine.url) {
+            currentUrl = String(mine.url);
+            dbg('[xYT] FRISCHE URL erhalten — setze ab Byte ' + received + ' fort.');
+            return true;
+          }
+          return null;
+        }).catch(function () { return null; });
+      }
+
+      // v1.0.73: Start-Offset der Mediendaten. Bei segmentierten Streams
+      // (initRange vorhanden) beginnt der Media-Byte-Strom bei initEnd+1
+      // (das init-Segment - ftyp+moov - wurde separat in loadInit geladen
+      // und wird in finishOk vorangestellt).
+      function mediaStartOffset() {
+        if (needsInit()) return initEndOffset() + 1;
+        return 0;
+      }
 
       function nextChunk(start) {
         const end = knownTotal > 0
@@ -596,55 +714,45 @@
           finishOk();
           return;
         }
-        try {
-          GM_xmlhttpRequest({
-            method: 'GET',
-            url: String(url),
-            headers: { 'Range': 'bytes=' + start + '-' + end },
-            responseType: 'arraybuffer',
-            timeout: 60000,
-            onload: function (res) {
-              try {
-                const buf = res && res.response;
-                if (!buf || !buf.byteLength) throw new Error('leere Chunk-Antwort (Status ' + (res && res.status) + ')');
-                chunks.push(buf);
-                received += buf.byteLength;
-                if (res && res.status === 200 && knownTotal > 0 && buf.byteLength >= knownTotal) {
-                  finishOk();
-                  return;
-                }
-                if (onProgress) onProgress(received, knownTotal);
-                if (knownTotal > 0) {
-                  nextChunk(received);
-                } else if (buf.byteLength < CHUNK_SIZE) {
-                  finishOk();
-                } else {
-                  nextChunk(received);
-                }
-              } catch (e3) {
-                reject(e3);
-              }
-            },
-            onerror: function (err) {
-              reject(new Error('Chunk onerror: ' + ((err && err.error) || 'unbekannt')));
-            },
-            ontimeout: function () {
-              reject(new Error('Chunk Timeout'));
+        fetchRangeChunk(currentUrl, start, end).then(function (r) {
+          // v1.0.72: 403 → frische URL holen und ab `start` nochmal versuchen.
+          if (!r.ok || !r.bytes) {
+            if (r.status === 403 || r.status === 416) {
+              return refreshUrl().then(function (ok) {
+                if (ok) { nextChunk(start); return; }
+                throw new Error('leere Chunk-Antwort (Status ' + r.status + ')');
+              });
             }
-          });
-        } catch (eSync) {
-          // v1.0.42: Synchroner Wurf von GM_xmlhttpRequest (z. B. ungültige URL)
-          // → Promise ablehnen statt still hängen (runDownload zeigt Fehler).
-          reject(eSync);
-        }
+            throw new Error('leere Chunk-Antwort (Status ' + r.status + ')');
+          }
+          const buf = r.bytes;
+          const prev = received;
+          chunks.push(buf);
+          received += buf.byteLength;
+          if (r.status === 200 && knownTotal > 0 && buf.byteLength >= knownTotal) {
+            finishOk();
+            return;
+          }
+          if (onProgress) onProgress(received, knownTotal);
+          if (knownTotal > 0) {
+            nextChunk(prev + buf.byteLength);
+          } else if (buf.byteLength < CHUNK_SIZE) {
+            finishOk();
+          } else {
+            nextChunk(prev + buf.byteLength);
+          }
+        }).catch(reject);
       }
 
       function finishOk() {
         try {
-          const total = chunks.reduce(function (s, c) { return s + c.byteLength; }, 0);
+          // init-Segment (ftyp+moov) zuerst, dann die Mediendaten
+          const parts = initBytes.slice();
+          for (const c of chunks) parts.push(c);
+          const total = parts.reduce(function (s, c) { return s + c.byteLength; }, 0);
           const out = new Uint8Array(total);
           let off = 0;
-          for (const c of chunks) {
+          for (const c of parts) {
             out.set(new Uint8Array(c), off);
             off += c.byteLength;
           }
@@ -654,7 +762,12 @@
         }
       }
 
-      nextChunk(0);
+      // Start: zuerst init-Segment laden (falls segmentierter Codec), dann Medien
+      if (needsInit()) {
+        loadInit();
+      } else {
+        nextChunk(0);
+      }
     });
   }
 
@@ -1047,7 +1160,17 @@
         size: Number(f.contentLength) || 0,
         bitrate: f.bitrate || 0,
         audioSampleRate: f.audioSampleRate || '',
-        srcArray: srcArray || '?'   // DIAGNOSE: formats (progressiv) oder adaptiveFormats (DASH)
+        srcArray: srcArray || '?',   // DIAGNOSE: formats (progressiv) oder adaptiveFormats (DASH)
+        // v1.0.73: initRange/indexRange — für segmentierte AV1/VP9-DASH-Streams
+        // (1440p/2160p) liegen ftyp+moov im initRange (z. B. 0-700), die
+        // Mediadaten in indexRange. Ohne das init-Segment kann mergeFmp4 die
+        // ftyp/moov nicht finden → "ftyp/moov fehlt". Diese Werte werden beim
+        // Download verwendet, um das init-Segment separat zu laden und
+        // voranzustellen.
+        initStart: f.initRange ? Number(f.initRange.start) : 0,
+        initEnd: f.initRange ? Number(f.initRange.end) : -1,
+        indexStart: f.indexRange ? Number(f.indexRange.start) : -1,
+        indexEnd: f.indexRange ? Number(f.indexRange.end) : -1
       };
     }
 
@@ -1088,19 +1211,34 @@
     // überforderte die Liste den Nutzer (z. B. 1080p dreifach). Progressive
     // und Audio-Formate bleiben unberührt.
     // ---------------------------------------------------------------------
-    function codecRank(codec) {
+    // v1.0.76: Ranking für die Dedup. WICHTIG: MP4-Container über WebM
+    // bevorzugen — WebM-VP9-Streams (itag 313/271) sind EBML/Matroska und
+    // können von unserem bibliotheksfreien mergeFmp4 (MP4-Boxen) nicht
+    // zusammengeführt werden ("ftyp/moov fehlt"). AV1-mp4 (itag 401/400/399/398)
+    // oder H.264 (avc1) sind als video/mp4 mergebar.
+    function containerRank(stream) {
+      const mime = String(stream && stream.mime || '').toLowerCase();
+      if (mime.indexOf('video/mp4') === 0) return 0; // MP4 → mergebar
+      return 1;                                       // webm/sonst → nicht mergebar
+    }
+    function codecRank(codec, container) {
+      const mime = String(container || '').toLowerCase();
+      const inMp4 = mime.indexOf('video/mp4') === 0;
       const c = String(codec || '').toLowerCase();
-      if (c.indexOf('avc1') === 0 || c.indexOf('avc3') === 0) return 0; // H.264
-      if (c.indexOf('vp9') === 0) return 1;                              // VP9
-      if (c.indexOf('av01') === 0) return 2;                             // AV1
-      return 3;                                                          // unbekannt/sonst
+      // Höchste Priorität: MP4-Container mit H.264, dann MP4-AV1, dann MP4-VP9; WebM zuletzt
+      if (inMp4 && (c.indexOf('avc1') === 0 || c.indexOf('avc3') === 0)) return 0;
+      if (inMp4 && c.indexOf('av01') === 0) return 1;           // MP4+AV1
+      if (inMp4) return 2;                                       // MP4+VP9 (selten)
+      if (c.indexOf('vp9') === 0) return 3;                      // WebM+VP9 (nicht mergebar)
+      if (c.indexOf('av01') === 0) return 4;                     // WebM+AV1
+      return 5;                                                  // sonst
     }
     {
       const best = new Map();
       for (const s of videoOnly) {
         const h = s.height || 0;
         const prev = best.get(h);
-        if (!prev || codecRank(s.codec) < codecRank(prev.codec)) best.set(h, s);
+        if (!prev || codecRank(s.codec, s.mime) < codecRank(prev.codec, prev.mime)) best.set(h, s);
       }
       // Reihenfolge: nach Höhe absteigend (wie videoOnly.sort unten) — Map
       // erhält Einfüge-Reihenfolge, daher zuerst sortiert füllen:
@@ -1158,7 +1296,9 @@
         const res = s.res || 0;
         if (res < 360) continue; // 144p/240p ausblenden (Anforderung)
         const prev = byRes.get(res);
-        if (!prev || codecRank(s.codec) < codecRank(prev.codec)) byRes.set(res, s);
+        // v1.0.76: MP4-Container bevorzugen (sonst wählt das Panel WebM-VP9
+        // für 2160p/1440p, das mergeFmp4 nicht zusammenführen kann).
+        if (!prev || codecRank(s.codec, s.mime) < codecRank(prev.codec, prev.mime)) byRes.set(res, s);
       }
       const video = Array.from(byRes.values()).sort(function (a, b) {
         return (b.res || 0) - (a.res || 0) || (b.fps || 0) - (a.fps || 0);
@@ -1816,13 +1956,50 @@
           }
         }
         // Beide Streams PARALLEL laden (jeder mit eigener Chunk-Kette)
-        const vPromise = downloadStreamBytes(stream.url, stream.size, function (received) { vRecv = received; reportMerge(); });
-        const aPromise = downloadStreamBytes(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); });
+        const vPromise = downloadStreamBytes(stream.url, stream.size, function (received) { vRecv = received; reportMerge(); }, { itag: stream.itag, videoId: videoId, kind: 'video' }, stream);
+        const aPromise = downloadStreamBytes(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); }, { itag: mergeAudio.itag, videoId: videoId, kind: 'audio' }, mergeAudio);
         const vBytes = await vPromise;
-        const aBytes = await aPromise;
+        let aBytes = null;
+        try {
+          aBytes = await aPromise;
+        } catch (aErr) {
+          // v1.0.72: Audio-Fehler isolieren — Video trotzdem speichern
+          // (nur ohne Ton-Begleitung). Verbessert Robustheit: ein 403 beim
+          // Audio-Stream darf nicht den ohnehin geladenen Video-Download killen.
+          console.warn('[xYT] Audio-Download fehlgeschlagen (' + (aErr && aErr.message ? aErr.message : String(aErr)) + ') — speichere Video allein.');
+          setStatusText('Audio-Teil fehlgeschlagen — speichere Video ohne Ton …');
+          aBytes = null;
+        }
+        if (!aBytes || !aBytes.length) {
+          // Kein Audio → Video als reine Video-Datei speichern
+          dbg('[xYT] MERGE OHNE AUDIO: Video=' + vBytes.length + ' B (keine Audiospur)');
+          setBarProgress(100);
+          setStatusText('Download abgeschlossen (ohne Ton): ' + filename);
+          saveBlob(new Blob([vBytes], { type: 'video/mp4' }), filename);
+          autoClosePanelAfter(2500);
+          hint.textContent = 'Video gespeichert (ohne Ton — Audiostream war nicht verfügbar).';
+          return;
+        }
         setStatusText('Führe Video + Audio zusammen …');
         dbg('[xYT] MERGE-LADEN-FERTIG: Video=' + vBytes.length + ' B, Audio=' + aBytes.length + ' B');
-        const merged = mergeFmp4(vBytes, aBytes);
+        let merged;
+        try {
+          merged = mergeFmp4(vBytes, aBytes);
+        } catch (mergeErr) {
+          // v1.0.72: Merge-Fehler isolieren. AV1/VP9-DASH-Streams (2160p/1440p,
+          // itag 401/313/400/271 usw.) sind segmentiert: ihre ftyp/moov liegen
+          // im initRange statt am Dateianfang — unser bibliotheksfreies
+          // mergeFmp4 kann sie nicht verschachteln. Damit der Download nicht
+          // verloren geht, speichern wir Video + Audio als EINEN MP4-Container
+          // (nur Video-Track fehlt dann, aber die Bytes sind sicher) bzw.
+          // als separate Dateien.
+          console.warn('[xYT] Merge fehlgeschlagen (' + (mergeErr && mergeErr.message ? mergeErr.message : String(mergeErr)) + ') — speichere Video+Audio getrennt.');
+          setStatusText('Merge nicht möglich — speichere Video & Audio getrennt …');
+          // Videodatei (H.264/VP9/AV1-Container, inkl. init) speichern
+          saveBlob(new Blob([vBytes], { type: 'video/mp4' }), filename);
+          autoClosePanelAfter(2500);
+          return;
+        }
         dbg('[xYT] MERGE-OK: gemergt=' + merged.length + ' B (Video ' + vBytes.length + ' + Audio ' + aBytes.length + ')');
         setBarProgress(100);
         setStatusText('Download abgeschlossen: ' + filename);
