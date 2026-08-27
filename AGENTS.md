@@ -8,7 +8,7 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 - Jeder neue Build: Version in `@version` (Metablock) **und** `MY_VERSION` (Z. 74) anheben — **nie dieselbe Version zweimal** ausliefern.
 - Build nach `Ausgabe\xyt-downloader-v<version>.user.js` kopieren (alte Builds bleiben erhalten), per `cmp` + `md5sum` verifizieren.
 - `BERICHT.md` pro Build mit neuem Abschnitt aktualisieren.
-- **Git-Repo vorhanden** (seit 2026-08-05): `immerzu/xYTDownloader-userscript` auf GitHub. Commits/Pushes sind ERLAUBT und erwünscht (nur keine sensiblen Daten hochladen — API-Key bleibt Platzhalter). Kein Tag/Release per Git.
+- **Git-Repo vorhanden** (seit 2026-08-05): `immerzu/xYTDownloader-userscript` auf GitHub. Commits/Pushes sind ERLAUBT und erwünscht (nur keine sensiblen Daten hochladen — API-Key bleibt Platzhalter). **GitHub-Release pro Version** (seit v1.0.76): Git-Tag `v<version>` + `gh release create` mit `Ausgabe/xyt-downloader-v<version>.user.js` als Asset (Details im Skill `greasy-fork-publish`, Ablauf C).
 - **R8/Minify: immer verboten** (nicht zutreffend hier, aber projektübergreifende Regel).
 - savenow.to/dubs.io-Fallback-Code (`DEAKTIVIERTER FALLBACK-PFAD`, Z. 1182) **deaktiviert lassen**, nie reaktivieren.
 
