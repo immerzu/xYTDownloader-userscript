@@ -2,7 +2,7 @@
 // @name         xYTDownloader
 // @name:de      xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.78
+// @version      1.0.79
 // @description YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter ANDROID_VR-Client, DASH-Merging. / One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct ANDROID_VR client, DASH merging. / Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой ANDROID_VR, объединение DASH.
 // @description:de YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch, /shorts und /live. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton.
 // @author       Ede
@@ -47,7 +47,7 @@
  *
  * How it works:
  * - The script talks directly to YouTube’s Innertube API using the
- *   ANDROID_VR client (the same method JDownloader 2 uses). No external
+ *   VISIONOS client. No external
  *   download API, no server-side processing, no API keys.
  * - Progressive formats (video+audio in one file) are downloaded as-is.
  * - Higher resolutions on YouTube are DASH streams (separate video and
@@ -73,7 +73,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.78';
+  const MY_VERSION = '1.0.79';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -159,13 +159,13 @@
   const DUBS_STATUS = 'https://dubs.io/wp-json/tools/v1/status-video';
 
   // -------------------------------------------------------------------------
-  // ANDROID_VR-Innertube-Client (Methode von JDownloader2, siehe ANALYSE_JD2_YOUTUBE.md)
+  // Innertube-Client (liefert direkte, signierte googlevideo-Stream-URLs)
   // Liefert direkte, signierte googlevideo-Stream-URLs mit exakter contentLength
   // (ohne POT-Token, ohne 403 — im Gegensatz zum WEB-Client).
   // -------------------------------------------------------------------------
   const YT_PLAYER_ENDPOINT = 'https://www.youtube.com/youtubei/v1/player?prettyPrint=false';
-  // v1.0.72: VISIONOS-Client (JD2-Stand, im eigenen JD2-Log verifiziert). JD2
-  // lädt damit Streams via `&range=`-URL-Parameter problemlos — unser bisheriger
+  // v1.0.72: VISIONOS-Client (am Live-Download-Verhalten verifiziert).
+  // Er liefert Streams via `&range=`-URL-Parameter problemlos — unser bisheriger
   // ANDROID_VR-Client lieferte URLs, bei denen YouTube Range-Requests mit 403
   // abwies. VISIONOS liefert `c=VISIONOS`-Stream-URLs, die Range nativ erlauben.
   const ANDROID_VR_CONFIG = {
@@ -377,14 +377,14 @@
   }
 
   // -------------------------------------------------------------------------
-  // Download per manuellem Chunking (Range-Requests) — Methode von JDownloader2.
+  // Download per manuellem Chunking (Range-Requests).
   // Grund: GM_xmlhttpRequest.onprogress mit arraybuffer feuert in Yandex/
   // Tampermonkey NICHT inkrementell (ein einziger Event mit fast komplettem
   // loaded → „2935.9 MB geladen" sofort, Balken springt). Stattdessen laden wir
   // die Datei in ~4-MB-Stücken per Range-Header und zählen die empfangenen
   // Bytes selbst — der Fortschritt wächst damit garantiert inkrementell.
   // -------------------------------------------------------------------------
-  const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB je Chunk (JD2 nutzt ~4,8 MB)
+  const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB je Chunk
 
   // v1.0.71: Browser-Header, die YouTube für googlevideo.com-Range-Anfragen
   // voraussetzt. Ohne diese Header antwortet YouTube mit 403 Forbidden
@@ -418,10 +418,10 @@
   }
 
   // v1.0.72: Range-Chunk per native window.fetch laden. Die Range wird als
-  // `&range=START-END` DIREKT in die Stream-URL geschrieben (JD2-Methode,
-  // im JD2-Live-Log verifiziert — JD2 lädt damit Audio itag 140 und Video
-  // itag 401 komplett per `&range=` + `&ratebypass=yes`). Zusätzlich werden
-  // wie JD2 der `Referer`-Header auf die googlevideo-URL selbst, ein Desktop-UA
+  // `&range=START-END` DIREKT in die Stream-URL geschrieben — so lädt der
+  // Stream Audio itag 140 und Video itag 401 komplett per `&range=` +
+  // `&ratebypass=yes`. Zusätzlich werden der `Referer`-Header auf die
+  // googlevideo-URL selbst, ein Desktop-UA
   // und `Accept-Encoding: identity` gesetzt — das komplettiert das funktionie-
   // rende Request-Set. Liefert {status, bytes, ok, headers}.
   function fetchRangeChunk(url, start, end) {
@@ -432,7 +432,7 @@
     if (!/ratebypass=/i.test(u)) {
       u += '&ratebypass=yes';
     }
-    // Referer auf die googlevideo-URL selbst (JD2-Stand); UA/Firefox-Desktop;
+    // Referer auf die googlevideo-URL selbst; UA/Firefox-Desktop;
     // kein Accept-Encoding (identisch), damit die Rohbytes nicht dekomprimiert werden.
     const host = u.split('?')[0];
     return fetch(u, {
@@ -622,7 +622,7 @@
   // v1.0.72: `refreshInfo` = {itag, videoId}. Fällt ein Chunk mit 403 aus,
   // wird automatisch eine FRISCHE Player-Response geholt (neue signierte URL
   // für denselben itag) und ab der letzten Byte-Position fortgesetzt — die
-  // yt-dlp/JD2-Strategie gegen YouTube-URL-Limits.
+  // Strategie gegen YouTube-URL-Limits.
   // -------------------------------------------------------------------------
   function downloadStreamBytes(url, expectedSize, onProgress, refreshInfo, initRange) {
     return new Promise(function (resolve, reject) {
@@ -954,9 +954,9 @@
   }
 
   // -------------------------------------------------------------------------
-  // ANDROID_VR-Innertube-Client (primärer Pfad — Methode von JDownloader2)
-  // POST /youtubei/v1/player mit exakt denselben Headern/Client-Config wie JD2
-  // (siehe ANALYSE_JD2_YOUTUBE.md). Antwort enthält direkte signierte
+  // Innertube-Client (primärer Pfad)
+  // POST /youtubei/v1/player mit den Client-Config-Headern.
+  // Antwort enthält direkte signierte
   // googlevideo-Stream-URLs mit exakter contentLength.
   // WICHTIG (v1.0.21): Ohne X-Goog-Visitor-Id + Origin/Referer liefert YouTube
   // LOGIN_REQUIRED. Die Visitor-ID wird aus dem Seitenkontext (ytcfg) gelesen.
@@ -999,7 +999,7 @@
 
   function fetchAndroidVrPlayer(videoId) {
     return new Promise(function (resolve, reject) {
-      // Exakt JD2-Body (siehe Log): contentPlaybackContext mit html5Preferences +
+      // Body: contentPlaybackContext mit html5Preferences +
       // signatureTimestamp statt vis:0
       const body = JSON.stringify({
         context: { client: ANDROID_VR_CONFIG },
@@ -1124,7 +1124,7 @@
   //   progressive : aus streamingData.formats MIT Audio-Codec (Video+Audio in EINER Datei) → HAUPTKATEGORIE
   //   videoOnly   : aus streamingData.adaptiveFormats OHNE Audio (DASH Video-only) → Unterkategorie
   //   audioOnly   : aus streamingData.adaptiveFormats MIT Audio (DASH Audio-only) → Unterkategorie
-  // (analog JDownloader2: progressive direkt, Video-only/Audio-only getrennt)
+  //   (progressive direkt, Video-only/Audio-only getrennt)
   function extractStreams(pr) {
     const sd = (pr && pr.streamingData) || {};
     const formats = Array.isArray(sd.formats) ? sd.formats : [];
