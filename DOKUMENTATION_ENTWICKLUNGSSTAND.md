@@ -53,7 +53,7 @@ F:\001_Coding_Projekte\xYTDownloader\
 | Plattform | Tampermonkey-Userscript (Browser-Erweiterung), getestet in Yandex (Chromium) + Playwright-Chromium |
 | Zielseiten | `youtube.com/watch*` **und** `youtube.com/shorts/*` (inkl. `www.`/Subdomains, exkl. `music.youtube.com`) |
 | Laufzeit-APIs | `GM_xmlhttpRequest`, `GM_download`, `GM_addStyle` |
-| Externe Dienste | **Kein Drittanbieter** — direkter ANDROID_VR-Innertube-Client an `youtube.com/youtubei/v1/player` (Methode von JDownloader2) |
+| Externe Dienste | **Kein Drittanbieter** — direkter Innertube-Client an `youtube.com/youtubei/v1/player` |
 | UI | DOM-Manipulation (kein Framework); Button unten rechts im Player (Overlay) bzw. in der Action-Leiste + eigenes Overlay-Panel |
 | Kein lokales Projekt-Setup | kein npm, kein Python, kein Build-Schritt nötig |
 | Veröffentlichung | Greasy Fork (Name „xYTDownloader", Skript-ID 589972) + Reddit r/userscripts |
@@ -66,8 +66,8 @@ F:\001_Coding_Projekte\xYTDownloader\
 ## 3. Technischer Ansatz im Detail
 
 ### 3.1 Wie der YouTube-Download realisiert wird
-**Direkt über den ANDROID_VR-Innertube-Client** (seit v1.0.19, primärer Pfad — Methode von JDownloader2, siehe `ANALYSE_JD2_YOUTUBE.md`):
-- `POST https://www.youtube.com/youtubei/v1/player?prettyPrint=false` mit Client-Config `ANDROID_VR` (Name 28, Version 1.65.10, Oculus Quest 3, Android 12L).
+**Direkt über den Innertube-Client** (seit v1.0.19 primärer Pfad, seit v1.0.71–76 mit VISIONOS-Client statt ANDROID_VR):
+- `POST https://www.youtube.com/youtubei/v1/player?prettyPrint=false` mit Client-Config `VISIONOS` (Name 1.02, RealityDevice17,1, visionOS 26.5).
 - Die Antwort enthält **direkte, signierte googlevideo-Stream-URLs mit exakter `contentLength`** — ohne POT-Token, ohne 403 (im Gegensatz zum WEB-Client, der nur noch ABR/protobuf mit POT liefert).
 - Erforderliche Header (v1.0.21-Fix gegen LOGIN_REQUIRED): `X-Goog-Visitor-Id` (aus `ytcfg`), `Origin`, `Referer`, `Accept-Language`, `Cache-Control`, `contentPlaybackContext` mit `signatureTimestamp`.
 

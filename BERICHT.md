@@ -982,7 +982,7 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 **Stand:** 2026-08-27 — YouTube änderte die Innertube-Antworten: der ANDROID_VR-Client (Name 28) lieferte für viele Videos keine signierten googlevideo-URLs mehr (403/UNPLAYABLE ohne POT-Token, protobuf-UMP-Manifeste mit `sabr=1`). Der Nutzer meldete: **„Es hatte KEIN Download funktioniert — egal welche Auflösung"** (nicht nur 2160p/WebM). Die Ursache lag im Download-Pfad selbst (URL-Erzeugung/Headers), nicht im Container.
 
 Fix-Schritte in v1.0.71–v1.0.76 (Nacherzählung der Arbeitsversion):
-1. **VISIONOS-Client** statt ANDROID_VR (Name 1.02, `RealityDevice17,1`) — liefert wieder signierte googlevideo-URLs ohne POT-Token (JD2-Ansatz). `fetchAndroidVrPlayer()` Z. 998.
+1. **VISIONOS-Client** statt ANDROID_VR (Name 1.02, `RealityDevice17,1`) — liefert wieder signierte googlevideo-URLs ohne POT-Token. `fetchAndroidVrPlayer()` Z. 998.
 2. **`&range=` URL-Parameter** statt Range-Header + **googlevideo-Referer** — Range-Header-Requests auf adaptive URLs führten zu 403. `fetchRangeChunk()`/`refreshUrl()` Z. 625.
 3. **init-Segment separat laden** (`initRange`/ftyp+moov) bei segmentierten AV1/VP9-Streams. `normalize()` Z. 1164.
 4. **MP4-Container-Präferenz** in `codecRank()` (video/mp4 vor webm) — WebM-VP9 itag 313/271 ist EBML/Matroska und nicht mit dem bibliotheksfreien `mergeFmp4` muxbar. Z. 1219.
@@ -1019,3 +1019,26 @@ Fix:
 - **Deutsche by-site-Seite zeigt xYTDownloader jetzt** (heading: „xYTDownloader YouTube-Downloader-Userscript mit einem Klick…" mit deutscher @description).
 - GitHub: Commit `9f1bea3`, Tag `v1.0.78`, Release mit Asset `xyt-downloader-v1.0.78.user.js`.
 - **Webhook-Analyse (widerruft frühere Behauptung „defekt"):** Der Webhook funktioniert nachweislich — v1.0.76 (27.08., 16:17 MESZ) kam per Webhook (GitHub-Delivery `3839357654172434400` um 14:17:07Z = 16:17 MESZ, 19 s nach Commit `cc7ebb9`; GF-Versions-Zeitstempel = Delivery-Zeit). Der GF-Admin zeigt „Letzte erfolgreiche Synchronisierung: 09.08.2026" — das ist das Sync-Feld für den manuellen/automatischen Sync, nicht die Webhook-Übernahme. **Kernerkenntnis: Der Webhook-Pfad (Sync von GitHub) validiert NICHT** — er übernimmt auch Roh-Code mit @description > 500 Zeichen und ohne @description:de (v1.0.76 hat genau das auf GF geschafft). Der **manuelle Upload validiert** (500-Zeichen + @description:de-Pflicht) und hat v1.0.77 (674 Zeichen) abgelehnt — deshalb brauchte v1.0.78 den fixierten Metablock. Für saubere GF-Validierung: manueller Upload bevorzugen; der Webhook ist aber nicht defekt.
+
+## 47. v1.0.79 — Alle JD2/JDownloader2-Verweise aus dem Script entfernt
+
+**Stand:** 2026-08-28 — Auftrag des Nutzers: Alle Verweise auf "JD2"/"JDownloader 2" müssen sofort aus unserem Script entfernt werden (dann Update Greasy Fork + GitHub). Betraf **alle 14 Kommentarstellen** im Script (durchlaufende grep-Suche), keine Funktionslogik:
+- Install-Guide-Kommentar: "the same method JDownloader 2 uses" → VISIONOS client
+- `ANDROID_VR-Innertube-Client (Methode von JDownloader2…ANALYSE_JD2_YOUTUBE.md)` → "Innertube-Client"
+- `v1.0.72 VISIONOS-Client (JD2-Stand, im eigenen JD2-Log verifiziert)` → "am Live-Download-Verhalten verifiziert"
+- `Download per manuellem Chunking — Methode von JDownloader2` → ohne Tool-Bezug
+- `CHUNK_SIZE … (JD2 nutzt ~4,8 MB)` → ohne Tool-Bezug
+- `(JD2-Methode, im JD2-Live-Log verifiziert — JD2 lädt damit Audio itag 140 …)` → "so lädt der Stream Audio itag 140 …"
+- `(JD2-Stand)` → ohne Tool-Bezug
+- `yt-dlp/JD2-Strategie gegen YouTube-URL-Limits` → "Strategie gegen YouTube-URL-Limits"
+- `primärer Pfad — Methode von JDownloader2/POST mit exakt denselben Headern/Client-Config wie JD2 (siehe ANALYSE_JD2_YOUTUBE.md)` → neutrale Formulierung
+- `Exakt JD2-Body (siehe Log)` → "Body: contentPlaybackContext …"
+- `(analog JDownloader2: progressive direkt, Video-only/Audio-only getrennt)` → "(progressive direkt, Video-only/Audio-only getrennt)"
+
+Verifikation: `grep "JD2\|JDownloader\|yt-dlp"` → 0 Treffer im Script; `node --check` → SYNTAX OK. Version 1.0.78 → 1.0.79.
+Zusätzlich Readme/AGENTS/Doku/FACT (aktuelle Beschreibungsstellen) bereinigt; historische BERICHT-Abschnitte §32/§38/§55–67 (JD2-Methode als vergangenes Experiment) bleiben als dokumentierte Historie.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.79.user.js` (MD5 `072c8ec1af0cd09f8f900f0c5afbb4e9`, cmp-identisch). Syntax OK.
+**GitHub:** Commit `724c7ab`, Tag `v1.0.79`, Release mit Asset.
+**Greasy Fork:** Manueller Upload v1.0.79 (FileReader-Methode), API bestätigt `GF_VERSION=1.0.79`, `code_updated_at=2026-08-28T09:34:30Z`.
+**Skill-Lektion (angehängt im greasy-fork-publish skill):** Keine Verweise auf externe Download-Programme in Code-Kommentaren/öffentlichen Metadaten verwenden (Nutzerwunsch).

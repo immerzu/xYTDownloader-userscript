@@ -10,7 +10,7 @@
 - **Install-Link:** https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js
 
 ## Aktueller Stand (v1.0.78)
-- **Download-Client:** VISIONOS statt ANDROID_VR (Name 1.02, `RealityDevice17,1`) — ANDROID_VR lieferte wieder 403/UNPLAYABLE ohne POT-Token (JD2-Ansatz, `fetchAndroidVrPlayer()` Z. 1000)
+- **Download-Client:** VISIONOS statt ANDROID_VR (Name 1.02, `RealityDevice17,1`) — ANDROID_VR lieferte wieder 403/UNPLAYABLE ohne POT-Token (`fetchAndroidVrPlayer()` Z. 1000)
 - **Download-Fetches:** `&range=` URL-Parameter statt Range-Header + googlevideo-Referer (Range-Header → 403), init-Segment (ftyp+moov) separat laden
 - **Container:** MP4-Präferenz in `codecRank()` (video/mp4 vor webm) — WebM/VP9 itag 313/271 ist EBML und nicht mit `mergeFmp4` muxbar
 - **Metablock (GF-Validierung, WICHTIG):**

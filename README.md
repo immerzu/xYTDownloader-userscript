@@ -27,7 +27,7 @@ YouTube-Downloader-Userscript mit einem Klick. Video, Short oder beendeten Lives
 - Works on `/watch` and `/shorts` (including scrolling between Shorts), plus `/live` (finished livestreams / VODs)
 - All qualities up to 4K, each with audio
 - Automatic DASH merging for high resolutions (video + audio into one MP4)
-- Direct download from YouTube (ANDROID_VR Innertube client — same method JDownloader 2 uses)
+- Direct download from YouTube (VISIONOS Innertube client — direct googlevideo streams, no external API)
 - Library-free fMP4 box merging — no ffmpeg needed
 - Flat quality list (360p → 2160p), real progress bar, correct file names
 - Small, unobtrusive download button bottom-right of the player (60 % opacity over the video, 100 % on hover)
