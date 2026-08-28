@@ -993,7 +993,7 @@ Fix-Schritte in v1.0.71–v1.0.76 (Nacherzählung der Arbeitsversion):
 
 **Stand:** 2026-08-28 — Nutzer stellte fest: Das Script erscheint nicht auf `greasyfork.org/de/scripts/by-site/youtube.com?sort=updated` (deutsche Suche). Diagnose: Greasy Fork ordnet die Sprach-Zuordnung primär über **`@name`-Locale** und **`@description:de`** zu; nur `@name` (EN) ohne deutsche Variante führte dazu, dass das Skript auf der deutschen by-site-Seite fehlte (bei englischer Suche erschien es). Fix: `// @name:de xYTDownloader` in den Metablock aufgenommen. Version 1.0.76 → 1.0.77.
 
-**Build:** `Ausgabe\xyt-downloader-v1.0.77.user.js` (MD5 `530203460c8a150d5258e1137e593706`, cmp-identisch). Syntax OK. Git-Tag `v1.0.77` + GitHub Release mit Asset.
+**Build:** `Ausgabe\xyt-downloader-v1.0.77.user.js` (MD5 `56fd1ba760c3f10bc1e265f62ae14713`, cmp-identisch). Syntax OK. Git-Tag `v1.0.77` + GitHub Release mit Asset.
 
 ## 46. v1.0.78 — Wahre Ursache: GF-Validierung (@description > 500 Zeichen, @description:de Pflicht)
 
@@ -1012,7 +1012,7 @@ Fix:
 
 **Wichtige Lektion (dauerhaft):** Greasy Fork verlangt (a) `@description` max. 500 Zeichen, (b) lokalisierte `@description:de`-Zeile für die deutsche Zuordnung — sonst erscheint das Skript NICHT auf der deutschen by-site-Seite und der Upload schlägt fehl.
 
-**Build:** `Ausgabe\xyt-downloader-v1.0.78.user.js` (MD5 `530203460c8a150d5258e1137e593706`), cmp-identisch. Syntax OK.
+**Build:** `Ausgabe\xyt-downloader-v1.0.78.user.js` (MD5 `e191abb3522c6083e174315f89cacaa1`), cmp-identisch. Syntax OK.
 
 **Verifikation live (Playwright, eingeloggt):**
 - Manueller GF-Upload v1.0.78 → erfolgreich, Skriptseite zeigt Version 1.0.78.

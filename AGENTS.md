@@ -5,7 +5,7 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 ## Build-Regeln (bindend)
 
 - Arbeitsversion: `xyt-downloader.user.js` (Projektstamm) — dort werden Änderungen gemacht.
-- Jeder neue Build: Version in `@version` (Metablock) **und** `MY_VERSION` (Z. 74) anheben — **nie dieselbe Version zweimal** ausliefern.
+- Jeder neue Build: Version in `@version` (Metablock) **und** `MY_VERSION` (Z. 76) anheben — **nie dieselbe Version zweimal** ausliefern.
 - Build nach `Ausgabe\xyt-downloader-v<version>.user.js` kopieren (alte Builds bleiben erhalten), per `cmp` + `md5sum` verifizieren.
 - `BERICHT.md` pro Build mit neuem Abschnitt aktualisieren.
 - **Git-Repo vorhanden** (seit 2026-08-05): `immerzu/xYTDownloader-userscript` auf GitHub. Commits/Pushes sind ERLAUBT und erwünscht (nur keine sensiblen Daten hochladen — API-Key bleibt Platzhalter). **GitHub-Release pro Version** (seit v1.0.76): Git-Tag `v<version>` + `gh release create` mit `Ausgabe/xyt-downloader-v<version>.user.js` als Asset (Details im Skill `greasy-fork-publish`, Ablauf C).
@@ -14,13 +14,14 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 
 ## Architektur
 
-- `getVideoId()` (Z. 218): `?v=`-Param → `/shorts/<id>`-Pfad → PlayerResponse. Rückgabe: reine Video-ID.
-- `fetchAndroidVrPlayer(videoId)` (Z. 885): `POST youtubei/v1/player`, Client `ANDROID_VR` (Name 28, Version 1.65.10, Oculus Quest 3) — liefert signierte googlevideo-URLs **ohne POT-Token** (JDownloader2-Ansatz, Hauptpfad).
+- `getVideoId()` (Z. 224): `?v=`-Param → `/shorts/<id>`-Pfad → PlayerResponse. Rückgabe: reine Video-ID.
+- `fetchAndroidVrPlayer(videoId)` (Z. 1000): `POST youtubei/v1/player`, Client `VISIONOS` (Name 1.02, RealityDevice17,1) — liefert signierte googlevideo-URLs **ohne POT-Token** (JDownloader2-Ansatz, Hauptpfad). Seit v1.0.71–76 statt ANDROID_VR (der lieferte 403/UNPLAYABLE).
 - `extractStreams(pr)`: liefert `{progressive, videoOnly, audioOnly, video}` — `video` = flache Liste ≥360p, dedupliziert pro **`s.res`** (Label-Auflösung; bei Shorts ist `height` die lange Hochkant-Seite!), beste Codecs avc1 > vp9 > av01, absteigend.
-- `downloadUrl()`: manuelles 4-MB-Range-Chunking (`CHUNK_SIZE`), eigene `received`-Zählung (Yandex-`onprogress` ist nicht inkrementell), Blob → `<a download>`.
-- `runDownload(kind, stream, …)` (Z. 1750): direkt bei progressiv; DASH-videoOnly → automatischer Merge mit bestem Audio-Stream (`pickMergeAudio`, Z. 779, itag 140 bevorzugt).
-- `mergeFmp4()` (Z. 669): bibliotheksfreies fMP4-Box-Merging (ftyp + moov mit 2 traks + moof/mdat-Segmente; ffmpeg.wasm ist durch YouTube-CSP blockiert).
-- Injektion: `findAnchor()`/`attachButton()` — Leiste `#top-level-buttons-computed`, 4 s Wartezeit, dann Player-Fallback über dem **ersten sichtbaren** Element (`#movie_player` kann 0×0 sein! Kandidaten-Schleife).
+- `downloadUrl()` (Z. 454): manuelles 4-MB-Range-Chunking (`CHUNK_SIZE`), eigene `received`-Zählung (Yandex-`onprogress` ist nicht inkrementell), Blob → `<a download>`.
+- `runDownload(kind, stream, …)` (Z. 1892): direkt bei progressiv; DASH-videoOnly → automatischer Merge mit bestem Audio-Stream (`pickMergeAudio`, Z. 894, itag 140 bevorzugt).
+- `mergeFmp4()` (Z. 784): bibliotheksfreies fMP4-Box-Merging (ftyp + moov mit 2 traks + moof/mdat-Segmente; ffmpeg.wasm ist durch YouTube-CSP blockiert).
+- `downloadStreamBytes()` (Z. 627): `&range=` URL-Parameter statt Range-Header (Range-Header → 403), googlevideo-Referer, init-Segment (ftyp+moov) separat laden (Z. 1136 `normalize` setzt initRange).
+- Injektion: `findAnchor()`/`attachButton()` — Leiste `#top-level-buttons-computed`, 4 s Wartezeit (`BAR_WAIT_MS`, Z. 1524), dann Player-Fallback über dem **ersten sichtbaren** Element (`#movie_player` kann 0×0 sein! Kandidaten-Schleife).
 - SPA: `/(watch|shorts|live)/`-Erkennung in `refresh()`, 1,5-s-Intervall, MutationObserver, pushState/replaceState-Override.
 
 ## Tests (Playwright, `.playwright-mcp\`)

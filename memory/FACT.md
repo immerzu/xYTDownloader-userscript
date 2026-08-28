@@ -2,7 +2,7 @@
 
 ## Kerndaten
 - **Projekt-Root:** `F:\001_Coding_Projekte\xYTDownloader\`
-- **Arbeitsdatei:** `xyt-downloader.user.js` (Projektstamm, 1972 Zeilen)
+- **Arbeitsdatei:** `xyt-downloader.user.js` (Projektstamm, 2151 Zeilen)
 - **Builds:** `Ausgabe\xyt-downloader-v<version>.user.js`
 - **Git-Repo:** `immerzu/xYTDownloader-userscript` (Branch main, GitHub)
 - **Greasy Fork:** Skript-ID 589972, Account `immerzu` (ID 1629833)
@@ -10,7 +10,7 @@
 - **Install-Link:** https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js
 
 ## Aktueller Stand (v1.0.78)
-- **Download-Client:** VISIONOS statt ANDROID_VR (Name 1.02, `RealityDevice17,1`) — ANDROID_VR lieferte wieder 403/UNPLAYABLE ohne POT-Token (JD2-Ansatz, `fetchAndroidVrPlayer()` Z. 998)
+- **Download-Client:** VISIONOS statt ANDROID_VR (Name 1.02, `RealityDevice17,1`) — ANDROID_VR lieferte wieder 403/UNPLAYABLE ohne POT-Token (JD2-Ansatz, `fetchAndroidVrPlayer()` Z. 1000)
 - **Download-Fetches:** `&range=` URL-Parameter statt Range-Header + googlevideo-Referer (Range-Header → 403), init-Segment (ftyp+moov) separat laden
 - **Container:** MP4-Präferenz in `codecRank()` (video/mp4 vor webm) — WebM/VP9 itag 313/271 ist EBML und nicht mit `mergeFmp4` muxbar
 - **Metablock (GF-Validierung, WICHTIG):**
@@ -55,9 +55,10 @@
 
 ## Build-Regeln (bindend)
 - Version in `@version` UND `MY_VERSION` heben — NIE dieselbe Version zweimal!
+- Metablock-GF-Validierung: `@description` **max. 500 Zeichen** (aktuell 402), **`@description:de` Pflicht** (aktuell 226) + **`@name:de`** — sonst scheitert der GF-Upload und das Skript fehlt auf der deutschen by-site-Seite.
 - `node --check` vor jedem Build
-- Build per `cp → Ausgabe\`, `cmp` + `md5sum` verifizieren
+- Build per `cp → Ausgabe\`, `cmp` + `md5sum` verifizieren (MD5 im BERICHT.md EINTRAGEN — reale Werte! vgl. §45/46; nie den Wert der Vorversion kopieren)
 - `BERICHT.md` pro Build aktualisieren
 - KEINE sensiblen Daten (API-Key = Platzhalter!)
 - Push → Webhook → Greasy Fork (kein manueller Upload nötig) — **Webhook verifiziert funktionierend (v1.0.76 kam per Webhook); ABER: Webhook-Pfad validiert nicht (übernimmt auch 674-Zeichen-@description ohne @description:de) — manueller Upload validiert (500-Zeichen + @description:de). Für saubere GF-Validierung: manueller Upload bevorzugen.**
-- GitHub-Release pro Version: Git-Tag `v<version>` + `gh release create` mit `Ausgabe/xyt-downloader-v<version>.user.js` als Asset (seit v1.0.76)
+- GitHub-Release pro Version: Git-Tag `v<version>` + `gh release create` mit `Ausgabe/xyt-downloader-v<version>.user.js` als Asset (seit v1.0.76). Achtung: Tag per `gh release create` existiert remote, kann lokal fehlen (v1.0.77) — `git fetch --tags` synchronisiert.
