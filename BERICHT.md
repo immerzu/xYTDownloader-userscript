@@ -976,3 +976,46 @@ Version im Metablock (@version + MY_VERSION) anheben → git commit + push → G
 **Stand:** 2026-08-09 — @description im Metablock auf /watch, /shorts und /live erweitert + doppeltes Leerzeichen entfernt. Zusätzlich description.md (Greasy-Fork-Zusatzinfos, DE → RU → EN) angelegt und per Commit `0751fd9` ins Repo aufgenommen.
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.70.user.js` (MD5 `16492a1b86a9aea97e4d804e4cebae89`, cmp-identisch). Syntax OK.
+
+## 44. v1.0.71–v1.0.76 — Download bruch: VISIONOS-Client + range= URL-Param + MP4-Präferenz
+
+**Stand:** 2026-08-27 — YouTube änderte die Innertube-Antworten: der ANDROID_VR-Client (Name 28) lieferte für viele Videos keine signierten googlevideo-URLs mehr (403/UNPLAYABLE ohne POT-Token, protobuf-UMP-Manifeste mit `sabr=1`). Der Nutzer meldete: **„Es hatte KEIN Download funktioniert — egal welche Auflösung"** (nicht nur 2160p/WebM). Die Ursache lag im Download-Pfad selbst (URL-Erzeugung/Headers), nicht im Container.
+
+Fix-Schritte in v1.0.71–v1.0.76 (Nacherzählung der Arbeitsversion):
+1. **VISIONOS-Client** statt ANDROID_VR (Name 1.02, `RealityDevice17,1`) — liefert wieder signierte googlevideo-URLs ohne POT-Token (JD2-Ansatz). `fetchAndroidVrPlayer()` Z. 998.
+2. **`&range=` URL-Parameter** statt Range-Header + **googlevideo-Referer** — Range-Header-Requests auf adaptive URLs führten zu 403. `fetchRangeChunk()`/`refreshUrl()` Z. 625.
+3. **init-Segment separat laden** (`initRange`/ftyp+moov) bei segmentierten AV1/VP9-Streams. `normalize()` Z. 1164.
+4. **MP4-Container-Präferenz** in `codecRank()` (video/mp4 vor webm) — WebM-VP9 itag 313/271 ist EBML/Matroska und nicht mit dem bibliotheksfreien `mergeFmp4` muxbar. Z. 1219.
+
+**Builds:** `Ausgabe\xyt-downloader-v1.0.76.user.js` (MD5 `70dbdcec22aeb582190542541c8359c3`, cmp-identisch). Syntax OK. Real-Test Playwright: 2160p-Download mit MERGE-OK (Video 240.334.643 B + Audio 3.449.447 B = 243.783.067 B).
+
+## 45. v1.0.77 — @name:de hinzugefügt (deutsche by-site-Zuordnung)
+
+**Stand:** 2026-08-28 — Nutzer stellte fest: Das Script erscheint nicht auf `greasyfork.org/de/scripts/by-site/youtube.com?sort=updated` (deutsche Suche). Diagnose: Greasy Fork ordnet die Sprach-Zuordnung primär über **`@name`-Locale** und **`@description:de`** zu; nur `@name` (EN) ohne deutsche Variante führte dazu, dass das Skript auf der deutschen by-site-Seite fehlte (bei englischer Suche erschien es). Fix: `// @name:de xYTDownloader` in den Metablock aufgenommen. Version 1.0.76 → 1.0.77.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.77.user.js` (MD5 `530203460c8a150d5258e1137e593706`, cmp-identisch). Syntax OK. Git-Tag `v1.0.77` + GitHub Release mit Asset.
+
+## 46. v1.0.78 — Wahre Ursache: GF-Validierung (@description > 500 Zeichen, @description:de Pflicht)
+
+**Stand:** 2026-08-28 — Der Manuell-Upload von v1.0.77 auf GF scheiterte mit:
+```
+There were some problems with what you posted…
+- @description ist zu lang (maximal 500 Zeichen)
+- @description:de muss ausgefüllt werden
+```
+**Das war die tatsächliche Ursache, warum das Script auf der deutschen by-site-Seite fehlte** (nicht Cache, nicht Sandbox): Die dreisprachige Einzeiler-@description war 674 Zeichen lang (>500) und die lokalisierte `@description:de`-Zeile fehlte komplett. GF validiert beides beim Upload.
+
+Fix:
+- `@description` auf **402 Zeichen** gekürzt (DE/EN/RU einzeilig bleibt, kürzere Fassung).
+- `// @description:de <deutsche Fassung>` (226 Zeichen) ergänzt.
+- Version 1.0.77 → 1.0.78 (Arbeitsversion + Metablock).
+
+**Wichtige Lektion (dauerhaft):** Greasy Fork verlangt (a) `@description` max. 500 Zeichen, (b) lokalisierte `@description:de`-Zeile für die deutsche Zuordnung — sonst erscheint das Skript NICHT auf der deutschen by-site-Seite und der Upload schlägt fehl.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.78.user.js` (MD5 `530203460c8a150d5258e1137e593706`), cmp-identisch. Syntax OK.
+
+**Verifikation live (Playwright, eingeloggt):**
+- Manueller GF-Upload v1.0.78 → erfolgreich, Skriptseite zeigt Version 1.0.78.
+- **Deutsche by-site-Seite zeigt xYTDownloader jetzt** (heading: „xYTDownloader YouTube-Downloader-Userscript mit einem Klick…" mit deutscher @description).
+- GitHub: Commit `9f1bea3`, Tag `v1.0.78`, Release mit Asset `xyt-downloader-v1.0.78.user.js`.
+- Webhook-Sync (GF-Admin „Letzte erfolgreiche Synchronisierung 09.08.2026") funktioniert seit v1.0.71 NICHT mehr zuverlässig → **manueller Upload bleibt der bewährte Weg**.

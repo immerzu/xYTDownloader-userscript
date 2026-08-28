@@ -1,4 +1,4 @@
-# xYTDownloader — FACT SHEET (Stand: v1.0.70, 2026-08-09)
+# xYTDownloader — FACT SHEET (Stand: v1.0.78, 2026-08-28)
 
 ## Kerndaten
 - **Projekt-Root:** `F:\001_Coding_Projekte\xYTDownloader\`
@@ -6,19 +6,21 @@
 - **Builds:** `Ausgabe\xyt-downloader-v<version>.user.js`
 - **Git-Repo:** `immerzu/xYTDownloader-userscript` (Branch main, GitHub)
 - **Greasy Fork:** Skript-ID 589972, Account `immerzu` (ID 1629833)
-- **Webhook:** Push → Greasy Fork aktualisiert automatisch (Payload URL `/users/1629833-immerzu/webhook`, Content-Type json, Event push)
+- **Webhook:** Push → Greasy Fork aktualisiert automatisch (Payload URL `/users/1629833-immerzu/webhook`, Content-Type json, Event push) — **SEIT v1.0.71 NICHT MEHR ZUVERLÄSSIG** (letzte erfolgreiche Synchronisierung: 09.08.2026). GitHub liefert 200, aber GF übernimmt den Code nicht. **→ manueller Upload ist der bewährte Weg.**
 - **Install-Link:** https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js
 
-## Aktueller Stand (v1.0.70)
-- **Basis:** v1.0.49 Code (letzter bewiesen funktionierender Stand im Yandex-Browser)
-- **3 Ergänzungen auf Basis v1.0.49:**
-  1. Dreisprachige @description (DE → EN → RU in einer Zeile)
-  2. Livestream-Erkennung (isLivePlayerResponse, /live/-URLs, verständliche Meldungen)
-  3. Live-VOD-Meldung (keine falschen Buttons bei beendeten Livestreams ohne progressive Formate)
+## Aktueller Stand (v1.0.78)
+- **Download-Client:** VISIONOS statt ANDROID_VR (Name 1.02, `RealityDevice17,1`) — ANDROID_VR lieferte wieder 403/UNPLAYABLE ohne POT-Token (JD2-Ansatz, `fetchAndroidVrPlayer()` Z. 998)
+- **Download-Fetches:** `&range=` URL-Parameter statt Range-Header + googlevideo-Referer (Range-Header → 403), init-Segment (ftyp+moov) separat laden
+- **Container:** MP4-Präferenz in `codecRank()` (video/mp4 vor webm) — WebM/VP9 itag 313/271 ist EBML und nicht mit `mergeFmp4` muxbar
+- **Metablock (GF-Validierung, WICHTIG):**
+  - `@description`: **max. 500 Zeichen** — aktuelle Kurzfassung 402 Zeichen (DE/EN/RU einzeilig)
+  - `@description:de`: **Pflicht für deutsche by-site-Zuordnung** (226 Zeichen) — sonst erscheint das Skript NICHT auf `greasyfork.org/de/scripts/by-site/youtube.com`
+  - `@name:de`: ebenfalls ergänzt (v1.0.77)
 - **description.md** im Repo-Root: Zusatzinfos DE → RU → EN (mehrzeilig, für Greasy Fork)
 
 ## Architektur
-- **Download-Client:** ANDROID_VR Innertube (POST youtubei/v1/player, clientName 28, Oculus Quest 3)
+- **Download-Client:** VISIONOS Innertube (POST youtubei/v1/player, clientName 1.02, RealityDevice17,1)
 - **Progressive Downloads (360p):** itag 18 aus formats, inkl. Audiospur → Range-Chunking (4 MB) → Blob → saveBlob
 - **DASH-Merge (720p+):** videoOnly + audioOnly → mergeFmp4 (bibliotheksfreies fMP4-Box-Merging)
 - **Injektion:** Action-Leiste #top-level-buttons-computed (4 s Warte, dann Player-Overlay-Fallback)
@@ -32,20 +34,23 @@
 - Beendete Livestreams MIT progressiven Formaten → funktionieren
 - Kurzlinks (youtu.be/…) sind nicht abgedeckt
 
-## WICHTIGE Erkenntnisse aus 2026-08-08
-1. **Yandex-Tampermonkey-Korruption nach Rechner-Neustart:** xhr_failed/403-Fehler waren NICHT im Script — Tampermonkey war beschädigt.
+## WICHTIGE Erkenntnisse
+1. **GF-Validierung (2026-08-28):** Upload schlägt fehl, wenn `@description` > 500 Zeichen (674 war zu lang) ODER `@description:de` fehlt → genau deshalb fehlte das Skript auf der deutschen by-site-Seite (nicht Cache, nicht Sandbox).
+2. **Yandex-Tampermonkey-Korruption nach Rechner-Neustart (2026-08-08):** xhr_failed/403-Fehler waren NICHT im Script — Tampermonkey war beschädigt.
    - **Fix:** Cookies löschen → Tampermonkey komplett entfernen → Browser neu starten → Tampermonkey neu installieren → Script frisch importieren
-2. **Alle Experimente (v1.0.55–v1.0.67) waren unnötig:** pageFetch, JD2-Methode, GM_download, <a download>, streamHeaders — alles zurückgerollt.
-3. **v1.0.49 funktionierte durchgängig** in Playwright-Tests (360p+480p+1080p von sdk-NNVq4VY erfolgreich).
+3. **Alle Experimente (v1.0.55–v1.0.67) waren unnötig:** pageFetch, JD2-Methode, GM_download, <a download>, streamHeaders — alles zurückgerollt.
 
 ## Versionshistorie (sinnvolle Meilensteine)
 - v1.0.49: Letzter stabiler Stand (2026-08-05)
-- v1.0.52: Dreisprachige @description (DE → EN → RU)  
+- v1.0.52: Dreisprachige @description (DE → EN → RU)
 - v1.0.53/54: Livestream-Erkennung + /live/-URLs
 - v1.0.56: Live-VOD-Meldung (keine 204-Buttons)
 - v1.0.68: Pur v1.0.49 Code (nur Version geändert)
 - v1.0.69: v1.0.49 + 3 sinnvolle Features
 - v1.0.70: @description auf /live erweitert + Leerzeichen-Fix
+- v1.0.71–76: VISIONOS-Client + &range= + init-Segment + MP4-Präferenz (Fix für Download-Bruch ALLER Auflösungen)
+- v1.0.77: @name:de hinzugefügt (deutsche by-site-Zuordnung)
+- v1.0.78: @description auf <500 Zeichen gekürzt + @description:de ergänzt (GF-Validierung bestanden)
 - v1.0.55–67: **Alles Experimente — NICHT verwenden**
 
 ## Build-Regeln (bindend)
@@ -54,4 +59,5 @@
 - Build per `cp → Ausgabe\`, `cmp` + `md5sum` verifizieren
 - `BERICHT.md` pro Build aktualisieren
 - KEINE sensiblen Daten (API-Key = Platzhalter!)
-- Push → Webhook → Greasy Fork (kein manueller Upload nötig)
+- Push → Webhook → Greasy Fork (kein manueller Upload nötig) — **ABER: Webhook seit v1.0.71 unzuverlässig, manueller Upload bevorzugt**
+- GitHub-Release pro Version: Git-Tag `v<version>` + `gh release create` mit `Ausgabe/xyt-downloader-v<version>.user.js` als Asset (seit v1.0.76)

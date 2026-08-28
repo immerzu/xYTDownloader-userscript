@@ -36,10 +36,12 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 - Kurzlinks (youtu.be/…) sind nicht abgedeckt (nur /watch-, /shorts- und /live-Seiten).
 - Livestreams: echte Live-Übertragungen sind nicht herunterladbar (erkennbar via `isLivePlayerResponse`, Z. 872); beendete Livestreams (VODs) mit progressiven Formaten funktionieren.
 
-## Veröffentlichung (Stand v1.0.70)
+## Veröffentlichung (Stand v1.0.78)
 
-- Greasy Fork: https://greasyfork.org/de/scripts/589972-xytdownloader (Name „xYTDownloader", Skript-ID 589972; **online v1.0.70**, Konto `immerzu`)
-- **Webhook-Auto-Update aktiv** (seit 2026-08-05): GitHub-Push → Greasy Fork aktualisiert automatisch (Payload `/users/1629833-immerzu/webhook`, Content-Type json, push-Event, Response 200). Kein manueller Upload nötig — nur Fallback: https://greasyfork.org/de/scripts/589972/versions/new (Skill `greasy-fork-publish`)
+- Greasy Fork: https://greasyfork.org/de/scripts/589972-xytdownloader (Name „xYTDownloader", Skript-ID 589972; **online v1.0.78**, Konto `immerzu`)
+- **GF-Validierung (bindend, seit v1.0.78):** `@description` **max. 500 Zeichen** (aktuell 402) UND **`@description:de`-Zeile Pflicht** (aktuell 226) — ohne beides schlägt der Upload fehl und das Skript erscheint NICHT auf der deutschen by-site-Seite (`/de/scripts/by-site/youtube.com`). Auch `@name:de` gesetzt (seit v1.0.77).
+- **Webhook-Auto-Update: SEIT v1.0.71 NICHT ZUVERLÄSSIG** (GitHub liefert 200, GF übernimmt Code nicht; Admin zeigt „Letzte erfolgreiche Synchronisierung: 09.08.2026"). **Manueller Upload ist der bewährte Weg**: https://greasyfork.org/de/scripts/589972/versions/new (Skill `greasy-fork-publish`, Ablauf A, FileReader-Trick).
 - Install-Link: https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js
 - GitHub-Repo: https://github.com/immerzu/xYTDownloader-userscript (öffentlich, Branch main)
+- GitHub-Releases: https://github.com/immerzu/xYTDownloader-userscript/releases (Tag `v<version>` + Asset `Ausgabe/xyt-downloader-v<version>.user.js`, seit v1.0.76)
 - Reddit-Post: https://www.reddit.com/r/userscripts/comments/1vg0oiz/script_xytdownloader_oneclick_youtube_downloader/
