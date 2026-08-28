@@ -6,7 +6,7 @@
 - **Builds:** `Ausgabe\xyt-downloader-v<version>.user.js`
 - **Git-Repo:** `immerzu/xYTDownloader-userscript` (Branch main, GitHub)
 - **Greasy Fork:** Skript-ID 589972, Account `immerzu` (ID 1629833)
-- **Webhook:** Push → Greasy Fork aktualisiert automatisch (Payload URL `/users/1629833-immerzu/webhook`, Content-Type json, Event push) — **SEIT v1.0.71 NICHT MEHR ZUVERLÄSSIG** (letzte erfolgreiche Synchronisierung: 09.08.2026). GitHub liefert 200, aber GF übernimmt den Code nicht. **→ manueller Upload ist der bewährte Weg.**
+- **Webhook:** Push → Greasy Fork aktualisiert automatisch (Payload URL `/users/1629833-immerzu/webhook`, Content-Type json, Event push). **VERIFIZIERT FUNKTIONIEREND (2026-08-28):** v1.0.76 (27.08. 16:17 MESZ) kam per Webhook (Delivery 14:17:07Z, +19 s nach Commit `cc7ebb9`) — GF-Versions-Zeitstempel = Delivery-Zeit. Der GF-Admin zeigt „Letzte erfolgreiche Synchronisierung: 09.08.2026" — das ist das Webhook-Sync-Feld, nicht die Übernahme-Zeit. **Der Webhook-Pfad validiert NICHT** (übernimmt Roh-Code mit 674-Zeichen-@description unbemerkt), der manuelle Upload validiert (500-Zeichen-Limit + @description:de-Pflicht). **Manueller Upload bleibt für die Validierung der bevorzugte Weg**, aber der Webhook ist nicht defekt.
 - **Install-Link:** https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js
 
 ## Aktueller Stand (v1.0.78)
@@ -59,5 +59,5 @@
 - Build per `cp → Ausgabe\`, `cmp` + `md5sum` verifizieren
 - `BERICHT.md` pro Build aktualisieren
 - KEINE sensiblen Daten (API-Key = Platzhalter!)
-- Push → Webhook → Greasy Fork (kein manueller Upload nötig) — **ABER: Webhook seit v1.0.71 unzuverlässig, manueller Upload bevorzugt**
+- Push → Webhook → Greasy Fork (kein manueller Upload nötig) — **Webhook verifiziert funktionierend (v1.0.76 kam per Webhook); ABER: Webhook-Pfad validiert nicht (übernimmt auch 674-Zeichen-@description ohne @description:de) — manueller Upload validiert (500-Zeichen + @description:de). Für saubere GF-Validierung: manueller Upload bevorzugen.**
 - GitHub-Release pro Version: Git-Tag `v<version>` + `gh release create` mit `Ausgabe/xyt-downloader-v<version>.user.js` als Asset (seit v1.0.76)
