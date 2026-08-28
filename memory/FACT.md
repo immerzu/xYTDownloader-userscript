@@ -1,4 +1,4 @@
-# xYTDownloader — FACT SHEET (Stand: v1.0.78, 2026-08-28)
+# xYTDownloader — FACT SHEET (Stand: v1.0.79, 2026-08-28)
 
 ## Kerndaten
 - **Projekt-Root:** `F:\001_Coding_Projekte\xYTDownloader\`
@@ -9,7 +9,8 @@
 - **Webhook:** Push → Greasy Fork aktualisiert automatisch (Payload URL `/users/1629833-immerzu/webhook`, Content-Type json, Event push). **VERIFIZIERT FUNKTIONIEREND (2026-08-28):** v1.0.76 (27.08. 16:17 MESZ) kam per Webhook (Delivery 14:17:07Z, +19 s nach Commit `cc7ebb9`) — GF-Versions-Zeitstempel = Delivery-Zeit. Der GF-Admin zeigt „Letzte erfolgreiche Synchronisierung: 09.08.2026" — das ist das Webhook-Sync-Feld, nicht die Übernahme-Zeit. **Der Webhook-Pfad validiert NICHT** (übernimmt Roh-Code mit 674-Zeichen-@description unbemerkt), der manuelle Upload validiert (500-Zeichen-Limit + @description:de-Pflicht). **Manueller Upload bleibt für die Validierung der bevorzugte Weg**, aber der Webhook ist nicht defekt.
 - **Install-Link:** https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js
 
-## Aktueller Stand (v1.0.78)
+## Aktueller Stand (v1.0.79)
+- **v1.0.79 (2026-08-28):** Alle JD2/JDownloader2-Verweise aus dem Script-Kommentaren entfernt (neutrale Formulierungen) — kein Funktionswechsel. GF live (manueller Upload), GitHub Release v1.0.79.
 - **Download-Client:** VISIONOS statt ANDROID_VR (Name 1.02, `RealityDevice17,1`) — ANDROID_VR lieferte wieder 403/UNPLAYABLE ohne POT-Token (`fetchAndroidVrPlayer()` Z. 1000)
 - **Download-Fetches:** `&range=` URL-Parameter statt Range-Header + googlevideo-Referer (Range-Header → 403), init-Segment (ftyp+moov) separat laden
 - **Container:** MP4-Präferenz in `codecRank()` (video/mp4 vor webm) — WebM/VP9 itag 313/271 ist EBML und nicht mit `mergeFmp4` muxbar
@@ -51,6 +52,7 @@
 - v1.0.71–76: VISIONOS-Client + &range= + init-Segment + MP4-Präferenz (Fix für Download-Bruch ALLER Auflösungen)
 - v1.0.77: @name:de hinzugefügt (deutsche by-site-Zuordnung)
 - v1.0.78: @description auf <500 Zeichen gekürzt + @description:de ergänzt (GF-Validierung bestanden)
+- v1.0.79: Alle JD2/JDownloader2-Verweise aus Script-Kommentaren entfernt (neutrale Formulierungen)
 - v1.0.55–67: **Alles Experimente — NICHT verwenden**
 
 ## Build-Regeln (bindend)
