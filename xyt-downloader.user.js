@@ -2,7 +2,7 @@
 // @name         xYTDownloader
 // @name:de      xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.81
+// @version      1.0.82
 // @description YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging. / One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging. / Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
 // @description:de YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch, /shorts und /live. Keine externen APIs, direkter VISIONOS-Client. DASH-Merging für hohe Auflösungen mit Ton.
 // @author       Ede
@@ -13,16 +13,8 @@
 // @match        *://youtube.com/shorts/*
 // @match        *://*.youtube.com/shorts/*
 // @exclude      *://music.youtube.com/*
-// @grant        GM_xmlhttpRequest
 // @grant        GM_download
 // @grant        GM_addStyle
-// @connect      savenow.to
-// @connect      *.savenow.to
-// @connect      p.savenow.to
-// @connect      lbserver.xyz
-// @connect      *.lbserver.xyz
-// @connect      p.lbserver.xyz
-// @connect      dubs.io
 // @connect      googlevideo.com
 // @connect      *.googlevideo.com
 // @run-at       document-idle
@@ -73,7 +65,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.81';
+  const MY_VERSION = '1.0.82';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -149,14 +141,6 @@
       showError((ev && ev.message) ? ev.message : 'unbekannter Fehler');
     }
   });
-
-  // -------------------------------------------------------------------------
-  // Konfiguration (Download-API; aus dem Referenz-Skript übernommen)
-  // -------------------------------------------------------------------------
-  const API_KEY = 'HIER_API_KEY_EINFUEGEN'; // Platzhalter — echter Key nur in der veröffentlichten Greasy-Fork-Version (savenow-Fallback ist deaktiviert)
-  const SAVENOW_BASES = ['https://p.savenow.to', 'https://p.lbserver.xyz'];
-  const DUBS_START = 'https://dubs.io/wp-json/tools/v1/download-video';
-  const DUBS_STATUS = 'https://dubs.io/wp-json/tools/v1/status-video';
 
   // -------------------------------------------------------------------------
   // Innertube-Client (liefert direkte, signierte googlevideo-Stream-URLs)
@@ -453,10 +437,6 @@
 
   function downloadUrl(url, filename, expectedSize) {
     let knownTotal = Number(expectedSize) || 0;   // v1.0.38: let, damit die Probe die Größe nachtragen kann
-    if (typeof GM_xmlhttpRequest !== 'function') {
-      fallbackDownload(url, filename);
-      return true;
-    }
     const chunks = [];
     let received = 0;
     let probed = false; // v1.0.38: nur EINE Größen-Probe pro Download
@@ -901,59 +881,6 @@
   }
 
   // -------------------------------------------------------------------------
-  // API-Transport (GM_xmlhttpRequest umgeht CORS)
-  // -------------------------------------------------------------------------
-  function hostOf(url) {
-    try { return new URL(url).host; } catch (e) { return String(url).slice(0, 60); }
-  }
-
-  function gmFetch(url, timeoutMs) {
-    return new Promise((resolve, reject) => {
-      let done = false;
-      const timer = setTimeout(() => {
-        if (!done) { done = true; reject(new Error('Timeout: ' + hostOf(url))); }
-      }, timeoutMs || 30000);
-      try {
-        GM_xmlhttpRequest({
-          method: 'GET',
-          url: String(url),
-          timeout: timeoutMs || 30000,
-          onload: (res) => {
-            if (done) return;
-            done = true;
-            clearTimeout(timer);
-            if (res.status >= 200 && res.status < 300) {
-              resolve(res.responseText);
-            } else {
-              reject(new Error('HTTP ' + res.status + ' von ' + hostOf(url)));
-            }
-          },
-          onerror: (err) => {
-            if (done) return;
-            done = true;
-            clearTimeout(timer);
-            reject(new Error('Netzwerkfehler bei ' + hostOf(url) + (err && err.error ? ' — ' + err.error : '')));
-          },
-          ontimeout: () => {
-            if (done) return;
-            done = true;
-            clearTimeout(timer);
-            reject(new Error('Timeout bei ' + hostOf(url)));
-          },
-        });
-      } catch (e) {
-        clearTimeout(timer);
-        reject(e);
-      }
-    });
-  }
-
-  async function gmFetchJson(url, timeoutMs) {
-    const text = await gmFetch(url, timeoutMs);
-    return JSON.parse(text);
-  }
-
-  // -------------------------------------------------------------------------
   // Innertube-Client (primärer Pfad)
   // POST /youtubei/v1/player mit den Client-Config-Headern.
   // Antwort enthält direkte signierte
@@ -1314,107 +1241,6 @@
     let i = 0, v = bytes;
     while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
     return v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) + ' ' + units[i];
-  }
-
-  // -------------------------------------------------------------------------
-  // DEAKTIVIERTER FALLBACK-PFAD: savenow.to / dubs.io (externe Download-API)
-  // Wird seit v1.0.19 NICHT mehr aufgerufen — primärer Pfad ist der
-  // ANDROID_VR-Innertube-Client (direkte googlevideo-Stream-URLs).
-  // Der Code bleibt als Fallback erhalten (nicht gelöscht), falls die direkte
-  // Methode eines Tages scheitert (z. B. YouTube blockt ANDROID_VR).
-  // -------------------------------------------------------------------------
-  async function startSaveNow(videoUrl, format) {
-    let lastErr = null;
-    for (const base of SAVENOW_BASES) {
-      try {
-        const u = new URL('/ajax/download.php', base);
-        u.searchParams.set('copyright', '0');
-        u.searchParams.set('allow_extended_duration', '1');
-        u.searchParams.set('format', String(format));
-        u.searchParams.set('url', videoUrl);
-        u.searchParams.set('api', API_KEY);
-        const data = await gmFetchJson(u.toString(), 30000);
-        if (data && data.success && data.progress_url) {
-          return { provider: 'savenow', progressUrl: data.progress_url, title: data.title || (data.info && data.info.title) || '' };
-        }
-        lastErr = new Error('savenow.to: kein success/progress_url');
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    throw lastErr || new Error('savenow.to nicht verfügbar');
-  }
-
-  // dubs.io akzeptiert nur diese Formate (real getestet 2026-08-04);
-  // andere Werte (144/240/4k/8k/ogg/flac/wav) liefern 'Not available format'.
-  const DUBS_SUPPORTED = new Set(['360', '480', '720', '1080', 'mp3', 'm4a', 'aac', 'opus', 'webm']);
-
-  async function startDubs(videoId, format) {
-    if (!DUBS_SUPPORTED.has(String(format))) {
-      throw new Error('dubs.io unterstützt Format ' + format + ' nicht (nur 360/480/720/1080, Audio mp3/m4a/aac/opus/webm)');
-    }
-    const u = new URL(DUBS_START);
-    u.searchParams.set('id', videoId);
-    u.searchParams.set('format', String(format));
-    const data = await gmFetchJson(u.toString(), 30000);
-    if (!data || !data.success || !data.progressId) {
-      throw new Error('dubs.io: kein success/progressId');
-    }
-    return { provider: 'dubs', progressId: data.progressId };
-  }
-
-  // Pollt bis fertig; ruft onProgress(0..100) auf. Liefert download_url.
-  // Sicherheitsnetz: bricht ab, wenn der Fortschritt 120 s lang nicht steigt
-  // (Server-Job hängt) — statt den Nutzer endlos auf „Vorbereitung: 5 %"
-  // starren zu lassen.
-  async function pollUntilDone(job, onProgress) {
-    const STUCK_MS = 120000;
-    let lastPct = -1;
-    let lastChange = Date.now();
-
-    const report = (rawPct, apiText) => {
-      const pct = Math.min(Number(rawPct) || 0, 1000);
-      if (pct !== lastPct) { lastPct = pct; lastChange = Date.now(); }
-      onProgress(pct / 10, apiText || '');
-      if (Date.now() - lastChange > STUCK_MS) {
-        throw new Error('Kein Fortschritt seit 120 s — der Download-Dienst hängt gerade. Fenster schließen und erneut versuchen.');
-      }
-    };
-
-    if (job.provider === 'savenow') {
-      while (true) {
-        const d = await gmFetchJson(job.progressUrl, 30000);
-        report(Number(d.progress) || 0, d.text);
-        if (Number(d.progress) >= 1000 && d.download_url) return d.download_url;
-        if (d.success === 0 && d.error) throw new Error(d.error);
-        await sleep(3000);
-      }
-    }
-    // dubs.io
-    const statusUrl = new URL(DUBS_STATUS);
-    statusUrl.searchParams.set('id', job.progressId);
-    while (true) {
-      const d = await gmFetchJson(statusUrl.toString(), 30000);
-      report(Number(d.progress) || 0, d.text);
-      if (d.finished && d.downloadUrl) return d.downloadUrl;
-      await sleep(3000);
-    }
-  }
-
-  async function startDownload(videoUrl, videoId, format, onProgress) {
-    let job = null;
-    let lastErr = null;
-    try {
-      job = await startSaveNow(videoUrl, format);
-    } catch (e) {
-      lastErr = e;
-      try {
-        job = await startDubs(videoId, format);
-      } catch (e2) {
-        throw new Error('Beide Download-Anbieter fehlgeschlagen: ' + (lastErr && lastErr.message) + ' | ' + (e2 && e2.message));
-      }
-    }
-    return pollUntilDone(job, onProgress);
   }
 
   // -------------------------------------------------------------------------
