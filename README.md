@@ -10,15 +10,15 @@ One-click YouTube video downloader userscript for Tampermonkey / Violentmonkey.
 
 **English 🇬🇧**
 
-One-click YouTube video downloader userscript. Open any video, Short or finished livestream, click the small download button, pick a quality — done. No external download API, no API keys. Direct ANDROID_VR Innertube client, automatic DASH merging for high resolutions with sound.
+One-click YouTube video downloader userscript. Open any video, Short or finished livestream, click the small download button, pick a quality — done. No external download API, no API keys. Direct VISIONOS Innertube client, automatic DASH merging for high resolutions with sound.
 
 **Deutsch 🇩🇪**
 
-YouTube-Downloader-Userscript mit einem Klick. Video, Short oder beendeten Livestream öffnen, auf den kleinen Download-Button klicken, Qualität wählen — fertig. Keine externe Download-API, keine API-Schlüssel. Direkter ANDROID_VR-Innertube-Client, automatisches DASH-Merging für hohe Auflösungen mit Ton.
+YouTube-Downloader-Userscript mit einem Klick. Video, Short oder beendeten Livestream öffnen, auf den kleinen Download-Button klicken, Qualität wählen — fertig. Keine externe Download-API, keine API-Schlüssel. Direkter VISIONOS-Innertube-Client, automatisches DASH-Merging für hohe Auflösungen mit Ton.
 
 **Русский 🇷🇺**
 
-Пользовательский скрипт для скачивания видео с YouTube в один клик. Откройте любое видео, Short или завершённый стрим, нажмите маленькую кнопку загрузки, выберите качество — готово. Без внешних API и ключей. Прямой Innertube-клиент ANDROID_VR, автоматическое слияние DASH для высоких разрешений со звуком.
+Пользовательский скрипт для скачивания видео с YouTube в один клик. Откройте любое видео, Short или завершённый стрим, нажмите маленькую кнопку загрузки, выберите качество — готово. Без внешних API и ключей. Прямой Innertube-клиент VISIONOS, автоматическое слияние DASH для высоких разрешений со звуком.
 
 ---
 
@@ -46,7 +46,7 @@ YouTube-Downloader-Userscript mit einem Klick. Video, Short oder beendeten Lives
 
 ## How it works / Technik / Как это работает
 
-The script talks directly to YouTube's Innertube API using the **ANDROID_VR** client, so no third-party download service is involved. Higher resolutions are DASH streams (separate video + audio); the script merges them client-side into one MP4 with sound using a small fMP4 box merger.
+The script talks directly to YouTube's Innertube API using the **VISIONOS** client, so no third-party download service is involved. Higher resolutions are DASH streams (separate video + audio); the script merges them client-side into one MP4 with sound using a small fMP4 box merger.
 
 - Progressive formats are downloaded as-is.
 - DASH video-only streams are merged automatically with the best MP4 audio track (itag 140 preferred).
@@ -61,7 +61,7 @@ The script talks directly to YouTube's Innertube API using the **ANDROID_VR** cl
 
 ## Security note / Sicherheitshinweis / Примечание о безопасности
 
-The `API_KEY` constant (deactivated savenow.to fallback path) is **replaced with a placeholder** in this repository and in all public sources (including the published Greasy Fork version) for security reasons. The savenow fallback is disabled anyway — the primary path is the ANDROID_VR client without any API key.
+The `API_KEY` constant (deactivated savenow.to fallback path) is **replaced with a placeholder** in this repository and in all public sources (including the published Greasy Fork version) for security reasons. The savenow fallback is disabled anyway — the primary path is the VISIONOS client without any API key.
 
 ## License / Lizenz / Лицензия
 

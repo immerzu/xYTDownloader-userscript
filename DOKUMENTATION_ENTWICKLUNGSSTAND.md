@@ -59,7 +59,7 @@ F:\001_Coding_Projekte\xYTDownloader\
 | Veröffentlichung | Greasy Fork (Name „xYTDownloader", Skript-ID 589972) + Reddit r/userscripts |
 
 **Architektur-Ablauf (hoch):**
-`Button-Klick → videoId ermitteln (?v= oder /shorts/<id>) → ANDROID_VR-Player-Request (POST youtubei/v1/player) → Streams extrahieren (progressive/DASH-videoOnly/audioOnly, flache Liste ≥360p) → Klick auf Auflösung → progressiv: direkter Chunk-Download; DASH-videoOnly: paralleles Laden Video+Audio → clientseitiges fMP4-Merging → Blob speichern (<a download>) → Panel auto-close`.
+`Button-Klick → videoId ermitteln (?v= oder /shorts/<id>) → VISIONOS-Player-Request (POST youtubei/v1/player) → Streams extrahieren (progressive/DASH-videoOnly/audioOnly, flache Liste ≥360p) → Klick auf Auflösung → progressiv: direkter Chunk-Download; DASH-videoOnly: paralleles Laden Video+Audio → clientseitiges fMP4-Merging → Blob speichern (<a download>) → Panel auto-close`.
 
 ---
 
@@ -93,7 +93,7 @@ F:\001_Coding_Projekte\xYTDownloader\
 - **DASH-Merge-Fortschritt:** paralleles Laden von Video+Audio, Prozent über die Summe beider Streams.
 
 ### 3.5 Downloadgröße — Ermittlung und Darstellung
-- Die ANDROID_VR-Antwort liefert `contentLength` für DASH-Streams (Video/Audio) → exakte Größenanzeige im Panel (`formatBytes`).
+- Die VISIONOS-Antwort liefert `contentLength` für DASH-Streams (Video/Audio) → exakte Größenanzeige im Panel (`formatBytes`).
 - Progressive Formate (itag 18) haben oft **kein** `contentLength` → Größen-Probe per Range-Request beim Downloadstart; ohne Ergebnis MB-Anzeige ohne Prozent (ehrliche Anzeige, nie 100 % vor Datei-Ende).
 - Größencheck nach Abschluss: Abweichung erwartet vs. tatsächlich wird geloggt (`DL-FERTIG`).
 

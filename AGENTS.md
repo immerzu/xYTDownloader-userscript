@@ -26,7 +26,7 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 
 ## Tests (Playwright, `.playwright-mcp\`)
 
-- Real-Tests mit echtem ANDROID_VR-Request via GM-Shims (`GM_xmlhttpRequest`-Brücke, fetch an youtubei).
+- Real-Tests mit echtem VISIONOS-Request via GM-Shims (`GM_xmlhttpRequest`-Brücke, fetch an youtubei).
 - Testvideos: `dQw4w9WgXcQ` (Rick, 4K), `vE-cOL98DPk` (Short, funktioniert), `aXzVB3nT_3M` (Short, YouTube meldet „nicht verfügbar" — kein Script-Bug).
 - Syntax: `node --check xyt-downloader.user.js`.
 - Console-Logs mit `[xYT]`-Präfix (Ede nutzt Yandex + Tampermonkey; Verifikation über F12-Konsole: `[xYT] Script geladen v<version>`, `[xYT] URL: …`, `[xYT] Instanz-Flag: …`).
