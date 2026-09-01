@@ -37,9 +37,9 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 - Kurzlinks (youtu.be/…) sind nicht abgedeckt (nur /watch-, /shorts- und /live-Seiten).
 - Livestreams: echte Live-Übertragungen sind nicht herunterladbar (erkennbar via `isLivePlayerResponse`, Z. 872); beendete Livestreams (VODs) mit progressiven Formaten funktionieren.
 
-## Veröffentlichung (Stand v1.0.79)
+## Veröffentlichung (Stand v1.0.80)
 
-- Greasy Fork: https://greasyfork.org/de/scripts/589972-xytdownloader (Name „xYTDownloader", Skript-ID 589972; **online v1.0.79**, Konto `immerzu`)
+- Greasy Fork: https://greasyfork.org/de/scripts/589972-xytdownloader (Name „xYTDownloader", Skript-ID 589972; **online v1.0.80**, Konto `immerzu`)
 - **GF-Validierung (bindend, seit v1.0.78):** `@description` **max. 500 Zeichen** (aktuell 402) UND **`@description:de`-Zeile Pflicht** (aktuell 226) — ohne beides schlägt der Upload fehl und das Skript erscheint NICHT auf der deutschen by-site-Seite (`/de/scripts/by-site/youtube.com`). Auch `@name:de` gesetzt (seit v1.0.77).
 - **Webhook-Auto-Update: verifiziert funktionierend** (v1.0.76 vom 27.08. kam per Webhook — GF-Versions-Zeitstempel 16:17 MESZ = Delivery 14:17:07Z, 19 s nach Commit). **Achtung: Der Webhook-Pfad validiert NICHT** (übernimmt Roh-Code, auch @description > 500 Zeichen ohne @description:de). Der GF-Admin zeigt „Letzte erfolgreiche Synchronisierung" nur für den manuellen Sync — nicht für Webhook-Übernahmen. **Für saubere GF-Validierung: manuellen Upload bevorzugen** (https://greasyfork.org/de/scripts/589972/versions/new, Skill `greasy-fork-publish`, Ablauf A, FileReader-Trick).
 - Install-Link: https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js

@@ -1042,3 +1042,26 @@ Zusätzlich Readme/AGENTS/Doku/FACT (aktuelle Beschreibungsstellen) bereinigt; h
 **GitHub:** Commit `724c7ab`, Tag `v1.0.79`, Release mit Asset.
 **Greasy Fork:** Manueller Upload v1.0.79 (FileReader-Methode), API bestätigt `GF_VERSION=1.0.79`, `code_updated_at=2026-08-28T09:34:30Z`.
 **Skill-Lektion (angehängt im greasy-fork-publish skill):** Keine Verweise auf externe Download-Programme in Code-Kommentaren/öffentlichen Metadaten verwenden (Nutzerwunsch).
+
+## 48. v1.0.80 — Fix "LOGIN_REQUIRED — Sign in to confirm you're not a bot" (Player-Request via Seiten-fetch)
+
+**Stand:** 2026-09-01 — Nutzer meldete beim Öffnen des Download-Panels: **"Formate konnten nicht geladen werden: YouTube-Status: LOGIN_REQUIRED — Sign in to confirm you're not a bot".** Der Download-Button erschien, aber beim Laden der Stream-Formate scheiterte der Player-Request.
+
+### Analyse (Playwright-Real-Test, eingeloggt)
+Der Fehler stammt aus `fetchAndroidVrPlayer()` (Z. 1000), dem `POST youtubei/v1/player`-Request, der die Stream-Formate liefert. Er lief über **`GM_xmlhttpRequest`** — Tampermonkey-Sandbox-Kontext **ohne die Browser-Session**. YouTube stuft solche Requests als Bot ein → `LOGIN_REQUIRED`.
+
+Direkter Vergleich desselben VISIONOS-Player-Requests im Browser:
+| Request-Art | Ergebnis |
+|---|---|
+| `GM_xmlhttpRequest` (alt) | **LOGIN_REQUIRED — Sign in to confirm you're not a bot** |
+| **Seiten-`fetch`** (neu) | **`status: OK`, `adaptiveFormats: 27`** — umgeht die Bot-Prüfung (Seiten-Kontext trägt die echte Session) |
+
+Die Stream-Downloads (`fetchRangeChunk`) nutzen bereits seit v1.0.72 Seiten-`fetch` (funktionierten) — nur der **Formate-Request** blieb auf `GM_xmlhttpRequest` und war genau das Problem.
+
+### Änderung
+`fetchAndroidVrPlayer`: `GM_xmlhttpRequest`-Block durch **`fetch(YT_PLAYER_ENDPOINT, …)`** ersetzt (Seiten-Kontext). Response-Verarbeitung (Livestream-/Fehler-Checks) und Fehlerreject gleich. `@version`/`MY_VERSION` 1.0.79 → 1.0.80.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.80.user.js` (MD5 `368c74f3305e33e74b92545c4de94292`, cmp-identisch). Syntax OK.
+**GitHub:** Commit `0bef9df`, Tag `v1.0.80`, Release mit Asset.
+**Greasy Fork:** Manueller Upload v1.0.80, API bestätigt `GF_VERSION=1.0.80`, `code_updated_at=2026-09-01T06:39:11Z`.
+**Anmerkung:** Wirkt für die echte angemeldete Browser-Session (wie die zuvor funktionierenden Downloads). In nicht angemeldeten/Cookie-blockierenden Sitzungen kann YouTube weiterhin LOGIN_REQUIRED senden.
