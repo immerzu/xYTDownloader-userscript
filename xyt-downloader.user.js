@@ -2,7 +2,7 @@
 // @name         xYTDownloader
 // @name:de      xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.79
+// @version      1.0.80
 // @description YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter ANDROID_VR-Client, DASH-Merging. / One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct ANDROID_VR client, DASH merging. / Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой ANDROID_VR, объединение DASH.
 // @description:de YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch, /shorts und /live. Keine externen APIs, direkter ANDROID_VR-Client. DASH-Merging für hohe Auflösungen mit Ton.
 // @author       Ede
@@ -73,7 +73,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.79';
+  const MY_VERSION = '1.0.80';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -1032,44 +1032,40 @@
         console.warn('[xYT] Keine VISITOR_DATA im Seitenkontext gefunden — LOGIN_REQUIRED-Risiko');
       }
       try {
-        GM_xmlhttpRequest({
+        // v1.0.80: Player-Request per Seiten-`fetch` statt GM_xmlhttpRequest.
+        // GM_xmlhttpRequest läuft im Tampermonkey-Sandbox-Kontext ohne die
+        // Browser-Session → YouTube antwortet mit LOGIN_REQUIRED
+        // ("Sign in to confirm you're not a bot"). fetch läuft im Seiten-Kontext
+        // mit der echten YouTube-Session und umgeht die Bot-Prüfung (verifiziert
+        // 2026-08-28 im Playwright: Seiten-fetch liefert status OK, 25+ Formate).
+        fetch(YT_PLAYER_ENDPOINT, {
           method: 'POST',
-          url: YT_PLAYER_ENDPOINT,
           headers: headers,
-          data: body,
-          timeout: 30000,
-          onload: function (res) {
-            try {
-              const j = JSON.parse(res.responseText);
-              const status = j && j.playabilityStatus && j.playabilityStatus.status;
-              // v1.0.70: Livestream-Statuswerte mit verständlicher Meldung abfangen.
-              if (status === 'LIVE_STREAM_OFFLINE' || status === 'LIVE_STREAM_ENDED') {
-                reject(new Error('Dieser Livestream ist nicht verfügbar (offline/beendet). Live-Übertragungen können nicht heruntergeladen werden.'));
-                return;
-              }
-              if (status && status !== 'OK') {
-                reject(new Error('YouTube-Status: ' + status + (j.playabilityStatus.reason ? ' — ' + j.playabilityStatus.reason : '')));
-                return;
-              }
-              if (isLivePlayerResponse(j)) {
-                reject(new Error('Dieses Video ist ein Livestream und kann nicht heruntergeladen werden.'));
-                return;
-              }
-              if (!j || !j.streamingData) {
-                reject(new Error('Keine streamingData in ANDROID_VR-Antwort'));
-                return;
-              }
-              resolve(j);
-            } catch (e) {
-              reject(new Error('ANDROID_VR-Antwort nicht parsebar: ' + e.message));
-            }
-          },
-          onerror: function (err) {
-            reject(new Error('ANDROID_VR-Netzwerkfehler: ' + ((err && err.error) || 'unbekannt')));
-          },
-          ontimeout: function () {
-            reject(new Error('ANDROID_VR-Request Timeout (30 s)'));
+          body: body
+        }).then(function (res) {
+          return res.json();
+        }).then(function (j) {
+          const status = j && j.playabilityStatus && j.playabilityStatus.status;
+          // v1.0.70: Livestream-Statuswerte mit verständlicher Meldung abfangen.
+          if (status === 'LIVE_STREAM_OFFLINE' || status === 'LIVE_STREAM_ENDED') {
+            reject(new Error('Dieser Livestream ist nicht verfügbar (offline/beendet). Live-Übertragungen können nicht heruntergeladen werden.'));
+            return;
           }
+          if (status && status !== 'OK') {
+            reject(new Error('YouTube-Status: ' + status + (j.playabilityStatus && j.playabilityStatus.reason ? ' — ' + j.playabilityStatus.reason : '')));
+            return;
+          }
+          if (isLivePlayerResponse(j)) {
+            reject(new Error('Dieses Video ist ein Livestream und kann nicht heruntergeladen werden.'));
+            return;
+          }
+          if (!j || !j.streamingData) {
+            reject(new Error('Keine streamingData in ANDROID_VR-Antwort'));
+            return;
+          }
+          resolve(j);
+        }).catch(function (e) {
+          reject(new Error('ANDROID_VR-Netzwerk-/Parsefehler: ' + (e && e.message ? e.message : String(e))));
         });
       } catch (e) {
         reject(e);
