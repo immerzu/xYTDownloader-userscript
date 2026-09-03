@@ -2,7 +2,7 @@
 // @name         xYTDownloader
 // @name:de      xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.86
+// @version      1.0.87
 // @description YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging. / One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging. / Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
 // @description:de YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch, /shorts und /live. Keine externen APIs, direkter VISIONOS-Client. DASH-Merging für hohe Auflösungen mit Ton.
 // @author       Ede
@@ -65,7 +65,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.86';
+  const MY_VERSION = '1.0.87';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -486,16 +486,17 @@
     });
   }
 
-  function downloadUrl(url, filename, expectedSize) {
+  function downloadUrl(url, filename, expectedSize, wholeFile) {
     let knownTotal = Number(expectedSize) || 0;   // v1.0.38: let, damit die Probe die Größe nachtragen kann
     const chunks = [];
     let received = 0;
     let probed = false; // v1.0.38: nur EINE Größen-Probe pro Download
 
-    // v1.0.85: Progressive/WEB-URL OHNE `range=` liefert die KOMPLETTE Datei.
-    // Kein Range-Chunking und kein Firefox-Referer — ein einziges fetch reicht
-    // (sonst 403 Forbidden, siehe Nutzer-Screenshot "Download fehlgeschlagen: Forbidden").
-    if (!/[?&]range=/.test(String(url))) {
+    // v1.0.85/86: Komplette-Datei-URLs (Web-Player / ohne `range=`) mit EINEM
+    // fetch laden — kein Range-Clipping, kein Firefox-Referer. wholeFile=True
+    // erzwingt das auch dann, wenn die URL zufällig `range=` enthält (Web-Player
+    // URL, die von YouTube nicht gechunkt werden darf → sonst 403 Forbidden).
+    if (wholeFile || !/[?&]range=/.test(String(url))) {
       return new Promise(function (resolve) {
         fetch(String(url)).then(function (res) {
           if (!res.ok) throw new Error('leere Chunk-Antwort (Status ' + res.status + ')');
@@ -1209,9 +1210,15 @@
     const audioOnly = [];
 
     function normalize(f, srcArray) {
+      // v1.0.86: wholeFile-Flag je Quelle. Web-Player-Response
+      // (__xytSource='player-api-stream') liefert KOMPLETTE Datei-URLs —
+      // diese dürfen NICHT per `range=` gechunkt werden (403). VISIONOS/eigener
+      // Request-Logik bleibt range-fähig.
+      const isWebProgressiv = pr && pr.__xytSource === 'player-api-stream' && srcArray === 'formats';
       return {
         itag: f.itag,
         url: f.url,
+        wholeFile: isWebProgressiv,   // nur progressive (itag18) → kompletter Body
         height: f.height || 0,
         width: f.width || 0,
         // v1.0.41: Auflösung anhand des qualityLabel (z. B. "720p60" → 720).
@@ -2014,7 +2021,7 @@
         return;
       }
 
-      downloadUrl(stream.url, filename, stream.size);
+      downloadUrl(stream.url, filename, stream.size, stream.wholeFile);
 
       st.textContent = 'Download gestartet: ' + filename;
       st.className = 'xyt-dl-status';

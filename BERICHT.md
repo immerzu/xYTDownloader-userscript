@@ -1150,4 +1150,18 @@ Per `page.evaluate` im Seiten-Kontext den identischen VISIONOS-Request nachgebau
 
 **Hinweis (unverifiziert):** Der Fix greift nur für progressive/WEB-URLs ohne `range=`. DASH-Merge-Streams (video-only + audio) laufen weiterhin über den Range-Pfad und sind von dieser Änderung nicht betroffen.
 
+## 53. v1.0.87 — 403-Chunk-Fehler trotz v1.0.86: wholeFile-Flag für Web-Player-progressive URLs
+
+**Stand:** 2026-09-03 — Nach v1.0.86 kam weiterhin `Download fehlgeschlagen: leere Chunk-Antwort (Status 403)` bei 360p. Die v1.0.86-Unterscheidung „URL enthält `range=`?" griff nicht, weil die vom Web-Player übernommene progressive URL **ebenfalls ein `range=`-Query-Parameter** trug — sie wurde deshalb fälschlich als DASH-Range-URL behandelt und gechunkt → 403.
+
+### Änderung (v1.0.87)
+- `extractStreams`: Stream-Objekt bekommt ein `wholeFile`-Flag, das nur gesetzt wird, wenn die Quelle die **frische Web-Player-Response** ist (`pr.__xytSource === 'player-api-stream'`) **und** das Format aus `streamingData.formats` (progressive, itag 18, Video+Audio in einer Datei) stammt. DASH/adaptive (videoOnly, audioOnly) bleiben range-fähig.
+- `downloadUrl(url, filename, expectedSize, wholeFile)`: Der komplette-Body-Fast-Path wird nicht nur bei fehlendem `range=`, sondern auch bei `wholeFile=true` genutzt — **auch wenn die URL ein `range=`-Param hat** (Web-Player progressive URL). Damit entfällt das Range-Clipping, das Youtube mit 403 quittiert.
+- `runDownload`: übergibt `stream.wholeFile` an `downloadUrl`.
+- Version 1.0.86 → 1.0.87.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.87.user.js` (MD5 `6f4f252b7794b6a3f2e2a4a2416367a5`, cmp-identisch mit Arbeitsversion). Syntax OK (`node --check`).
+
+**Hinweis (unverifiziert):** Greift für 360p-progressive. DASH-Merge (720p+) nutzt weiterhin `downloadStreamBytes`/Range — falls dort erneut 403 auftritt, braucht es eine analoge WholeFile-Behandlung für adaptive Quellen.
+
 
