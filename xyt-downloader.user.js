@@ -2,7 +2,7 @@
 // @name         xYTDownloader
 // @name:de      xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.82
+// @version      1.0.83
 // @description YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging. / One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging. / Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
 // @description:de YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch, /shorts und /live. Keine externen APIs, direkter VISIONOS-Client. DASH-Merging für hohe Auflösungen mit Ton.
 // @author       Ede
@@ -65,7 +65,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.82';
+  const MY_VERSION = '1.0.83';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -965,10 +965,20 @@
         // ("Sign in to confirm you're not a bot"). fetch läuft im Seiten-Kontext
         // mit der echten YouTube-Session und umgeht die Bot-Prüfung (verifiziert
         // 2026-08-28 im Playwright: Seiten-fetch liefert status OK, 25+ Formate).
+        //
+        // v1.0.83: credentials:'include' ergänzt. In Yandex-Browser isoliert die
+        // Tampermonkey-Addon-World den Default (same-origin), sodass die echten
+        // YouTube-Session-Cookies NICHT mitgesendet werden → YouTube wertet den
+        // Request als anonym/Bot → LOGIN_REQUIRED ("Sign in to confirm... not a bot"),
+        // obwohl der Nutzer eingeloggt ist. credentials:'include' erzwingt, dass
+        // die Seiten-Cookies (SAPISID etc.) dem Player-Request mitgegeben werden
+        // (verifiziert an HAR: req['cookies'] war 0 ohne credentials).
         fetch(YT_PLAYER_ENDPOINT, {
           method: 'POST',
           headers: headers,
-          body: body
+          body: body,
+          credentials: 'include',
+          referrerPolicy: 'unsafe-url'
         }).then(function (res) {
           return res.json();
         }).then(function (j) {

@@ -1065,3 +1065,28 @@ Die Stream-Downloads (`fetchRangeChunk`) nutzen bereits seit v1.0.72 Seiten-`fet
 **GitHub:** Commit `0bef9df`, Tag `v1.0.80`, Release mit Asset.
 **Greasy Fork:** Manueller Upload v1.0.80, API bestätigt `GF_VERSION=1.0.80`, `code_updated_at=2026-09-01T06:39:11Z`.
 **Anmerkung:** Wirkt für die echte angemeldete Browser-Session (wie die zuvor funktionierenden Downloads). In nicht angemeldeten/Cookie-blockierenden Sitzungen kann YouTube weiterhin LOGIN_REQUIRED senden.
+
+## 49. v1.0.83 — Fix LOGIN_REQUIRED im Yandex-Browser (credentials:'include' im Player-fetch)
+
+**Stand:** 2026-09-03 — Nach erfolgreichem Fix v1.0.80 (funktioniert im Playwright/Chromium) meldete der Nutzer denselben **"LOGIN_REQUIRED — Sign in to confirm you're not a bot"**-Fehler weiterhin **nur im Yandex-Browser**, obwohl beide Browser mit demselben Google-Konto angemeldet sind und dieselbe v1.0.82 lief.
+
+### Analyse (Yandex-HAR `clipboard-20260903-180812.865735-000002.har`, Entry #5/#7)
+Der xYT-VISIONOS-Player-Request (`POST youtubei/v1/player`, `x-youtube-client-name: 28`) wurde im Yandex aus dem HAR isoliert. Der entscheidende Befund:
+- `req['cookies']`-Array im HAR = **0 Cookies**
+- **kein `Cookie:`-Request-Header** (SAPISID/`__Secure-3PAPISID`)
+- **kein `authorization`-Header**
+- `x-goog-visitor-id` IS korrekt gesetzt (VISITOR_DATA funktioniert)
+- Playwright (funktioniert): Seiten-`fetch` erbt die echte YouTube-Session-Cookies → `status: OK`
+
+**Root Cause:** Seit v1.0.80 läuft der Player-Request per Seiten-`fetch` (kein `GM_xmlhttpRequest` mehr). Der `fetch` hatte aber **kein `credentials`** — Default ist `same-origin`. In Chromium/Playwright teilt die Tampermonkey-Isolated-World die Cookie-Jar mit der Seite (reicht), **in Yandex isoliert die Addon-World die Cookies strenger** → der Skript-`fetch` ging **ohne die YouTube-Session-Cookies** raus → YouTube wertete den eingeloggten Nutzer als anonym/Bot → `LOGIN_REQUIRED`.
+
+### Änderung
+In `fetchAndroidVrPlayer` dem `fetch(YT_PLAYER_ENDPOINT, …)` ergänzt:
+```js
+credentials: 'include',   // erzwingt Session-Cookies aus der Seiten-World (Yandex-Isolation)
+referrerPolicy: 'unsafe-url'
+```
+`credentials:'include'` sorgt dafür, dass auch in Browsern mit strenger Addon-Welt-Isolation (Yandex) die echten YouTube-Cookies (SAPISID etc.) dem Player-Request mitgegeben werden. `@version`/`MY_VERSION` 1.0.82 → 1.0.83.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.83.user.js` (MD5 `dfce8144243adf38bc3cb41fddd0d948`, cmp-identisch mit Arbeitsversion). Syntax OK (`node --check`).
+
