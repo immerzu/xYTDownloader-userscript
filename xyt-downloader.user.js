@@ -2,7 +2,7 @@
 // @name         xYTDownloader
 // @name:de      xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.84
+// @version      1.0.85
 // @description YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging. / One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging. / Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
 // @description:de YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch, /shorts und /live. Keine externen APIs, direkter VISIONOS-Client. DASH-Merging für hohe Auflösungen mit Ton.
 // @author       Ede
@@ -65,7 +65,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.84';
+  const MY_VERSION = '1.0.85';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -245,6 +245,40 @@
         if (m) {
           try { return JSON.parse(m[1]); } catch (e) { /* weiter */ }
         }
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  // v1.0.85: FRISCHE Player-Response aus dem abspielenden Web-Player lesen.
+  // Die statische `ytInitialPlayerResponse` (getPlayerResponse oben) enthält in
+  // POT-Sessions keine/leere streamingData. Der geladene Player (<div id="movie_player">)
+  // besitzt nach dem Abspielen aber die vom Web-Player (clientName 1) erfolgreich
+  // erzeugte Response MIT signierten googlevideo-Stream-URLs. Diese können wir
+  // abgreifen und für den Download nutzen — kein eigener clientName-28-Request,
+  // der in POT-Sessions mit LOGIN_REQUIRED scheitert.
+  function getPlayerApiResponse(videoId) {
+    try {
+      const mp = document.querySelector('#movie_player');
+      if (!mp) return null;
+      // Moderne Player: videoId-Methode oder Player-Response.
+      let pr = null;
+      if (typeof mp.getPlayerResponse === 'function') {
+        pr = mp.getPlayerResponse();
+      }
+      if (!pr && typeof mp.getVideoData === 'function') {
+        // getVideoData liefert nur Metadaten; echter Stream-Kern kommt anders.
+        // → kein brauchbarer Fallback hier.
+      }
+      if (pr && pr.videoDetails && pr.videoDetails.videoId
+          && pr.streamingData && (pr.streamingData.formats || pr.streamingData.adaptiveFormats)) {
+        // Sicherstellen, dass es zum gewünschten Video passt (nicht stale).
+        if (videoId && pr.videoDetails.videoId !== String(videoId)) {
+          dbg('[xYT] Player-Response videoId abweichend (stale) — ignoriert');
+          return null;
+        }
+        pr.__xytSource = 'player-api-stream';
+        return pr;
       }
     } catch (e) { /* ignore */ }
     return null;
@@ -1610,7 +1644,36 @@
         renderPanelMessage('Keine gültige Videoseite erkannt (kein ?v= Parameter).', true);
         return;
       }
-      const pr = await fetchAndroidVrPlayer(videoId);
+      // v1.0.85: Stream-Quellen-Strategie für POT-Sessions.
+      // 1) Bevorzugt: die FRISCHE Response des abspielenden Web-Players
+      //    (#movie_player), die signierte googlevideo-URLs enthält und keinen
+      //    eigenen clientName-28-Request (LOGIN_REQUIRED-Risiko) braucht.
+      let pr = getPlayerApiResponse(videoId);
+      if (pr) {
+        dbg('[xYT] Streams aus dem abspielenden Web-Player übernommen (POT-sicher)');
+      } else {
+        // 2) Kein Player-State verfügbar → eigener Innertube-Request.
+        //    (funktioniert in Sessions ohne POT-Sperre)
+        try {
+          pr = await fetchAndroidVrPlayer(videoId);
+          if (pr) pr.__xytSource = 'visApi'; // nur zur Info
+        } catch (fetchErr) {
+          // 3) Fallback auf eingebettete Response (letzter Ausweg)
+          console.warn('[xYT] Innertube-Fetch fehlgeschlagen (' + (fetchErr && fetchErr.message) + ') — Fallback auf eingebettete ytInitialPlayerResponse');
+          const embedded = getPlayerResponse();
+          if (embedded && embedded.streamingData
+              && (embedded.streamingData.formats || embedded.streamingData.adaptiveFormats)) {
+            embedded.__xytSource = 'embedded-fallback';
+            pr = embedded;
+          } else {
+            throw fetchErr;
+          }
+        }
+      }
+      if (!pr || !pr.streamingData) {
+        renderPanelMessage('Keine Player-Antwort mit streamingData — Video evtl. POT-gesperrt/age-restricted.', true);
+        return;
+      }
       const streams = extractStreams(pr);
       if (streams.progressive.length === 0 && streams.videoOnly.length === 0 && streams.audioOnly.length === 0) {
         // v1.0.70: Livestream-Fall sauber abfangen.

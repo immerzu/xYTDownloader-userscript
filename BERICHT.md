@@ -1112,3 +1112,27 @@ Per `page.evaluate` im Seiten-Kontext den identischen VISIONOS-Request nachgebau
 **Build:** `Ausgabe\xyt-downloader-v1.0.84.user.js` (MD5 `5cb3ddcda194244d1ab6c4ffc67f4fb8`, cmp-identisch mit Arbeitsversion). Syntax OK (`node --check`).
 
 
+## 51. v1.0.85 — POT-sicherer Stream-Umbau: Streams aus dem abspielenden Web-Player statt eigenem clientName-28-Request
+
+**Stand:** 2026-09-03 — Trotz v1.0.84 (Authorization) + Login-/Cookie-Reset + v1.0.84-eingebettetem-Fallback trat in der Nutzer-Session weiter **`LOGIN_REQUIRED`** auf. Vollständige NetLog-Analyse der Nutzer-Session ergab die harte Ursache:
+
+### Beweiskette (NetLogs + Konsole des Nutzers, 2026-09-03)
+- Die xYT-`youtubei/v1/player`-Requests senden **korrekt** `Cookie`, `Origin`, `Referer`, `X-Goog-Visitor-Id`, `clientName 28` → YouTube antwortet **`LOGIN_REQUIRED`**.
+- Gleichzeitig läuft der echte **Web-Player der Seite** (`clientName 1`, `c=WEB`) fehlerfrei und lädt/streamt dasselbe Video.
+- Empfangene Fehler: `googlevideo 403` beim progressiven (itag-18)-Pfad nur in Verbindung mit Login-/POT-Bewertung der Session.
+
+**Interpretation:** Die Nutzer-Session ist eine "PO-Token/POT-Session": YouTube verlangt für **jeden eigenen Innertube-player-Request mit einem Nicht-WEB-Client (28/VISIONOS)** ein Bot-spezifisches POT, das ein Userscript nicht erzeugen kann. Header/Cookies/Login kontinuierlich zu patchen funktioniert daher nicht.
+
+### Änderung (v1.0.85)
+- Neue Funktion `getPlayerApiResponse(videoId)` — liest die **frische** Response des abspielenden `#movie_player` (`.getPlayerResponse()`), die nach erfolgreichem Abspielen die **signierten googlevideo-Stream-URLs** des echten Web-Players (clientName 1, POT-fähig) enthält; prüft, dass `streamingData` vorhanden ist und `videoId` passt.
+- `loadStreamsIntoPanel` Strategie in Reihenfolge:
+  1. `getPlayerApiResponse(videoId)` → POT-sichere Streams des Web-Players (bevorzugt, kein eigener clientName-28-Request).
+  2. falls leer → `fetchAndroidVrPlayer(videoId)` (eigener Request, funktioniert in Sessions ohne POT-Sperre).
+  3. falls das fehlschlägt → eingebettete `ytInitialPlayerResponse` als letzter Ausweg; sonst Original-Fehler.
+- Version 1.0.84 → 1.0.85.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.85.user.js` (MD5 `c0d55346f0f47997818ec3cb174ebd15`, cmp-identisch mit Arbeitsversion). Syntax OK (`node --check`).
+
+**Hinweis (unverifiziert):** Diese v1.0.85 greift nur, wenn der `#movie_player` eine echte (URL-tragende) Response hält. In einer frisch geöffneten Seite muss ggf. der Download-Klick warten, bis der Player geladen hat; für volle Verifikation ist ein Test in der betroffenen Nutzer-Session nötig, der hier nicht remote durchführbar war.
+
+
