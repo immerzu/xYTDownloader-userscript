@@ -2,7 +2,7 @@
 // @name         xYTDownloader
 // @name:de      xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.83
+// @version      1.0.84
 // @description YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging. / One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging. / Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
 // @description:de YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch, /shorts und /live. Keine externen APIs, direkter VISIONOS-Client. DASH-Merging für hohe Auflösungen mit Ton.
 // @author       Ede
@@ -65,7 +65,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.83';
+  const MY_VERSION = '1.0.84';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -905,6 +905,46 @@
     return '';
   }
 
+  // v1.0.84: Authorization-Header aus der SAPISID-Cookie generieren.
+  // In Yandex-Browser isoliert Tampermonkey die Addon-World so streng, dass der
+  // fetch-Seiten-Kontext die echten YouTube-Session-Cookies NICHT durchreicht
+  // (HAR-Beleg: req['cookies']=0 beim Player-Request) — selbst mit
+  // credentials:'include'. Ein explizit gesetzter 'Authorization'-Header wird
+  // aber IMMER als Request-Header mitgesendet, unabhängig vom Cookie-Transport.
+  // YouTube akzeptiert eingeloggte Client-Requests anhand dieses Headers
+  // (wie der echte Web-Player: 'SAPISIDHASH <ts>_<sha1(ts sapid ts)>').
+  // Verifiziert 2026-09-03 im Playwright: VISIONOS-Request mit Authorization
+  // → status OK, adaptive 27.
+  function getSapisidAuth() {
+    try {
+      const m = document.cookie.match(/(?:^|;\s*)SAPISID=([^;]+)/);
+      if (!m) return '';
+      const sapisid = m[1];
+      const ts = Math.floor(Date.now() / 1000);
+      return { sapisid: sapisid, ts: ts, payload: ts + ' ' + sapisid + ' ' + ts };
+    } catch (e) { return ''; }
+  }
+
+  // v1.0.84: Web-Crypto-SHA1 für den SAPISIDHASH (async). Fallback: falls
+  // crypto.subtle fehlt, Viele Addon-Welten haben nur TextEncoder — wir lassen
+  // den Authorization-Header dann weg (LOGIN_REQUIRED-Risiko bleibt, aber kein
+  // Rethrow).
+  async function buildSapisidHash() {
+    try {
+      const info = getSapisidAuth();
+      if (!info) return '';
+      const enc = new TextEncoder().encode(info.payload);
+      if (crypto && crypto.subtle && crypto.subtle.digest) {
+        const buf = await crypto.subtle.digest('SHA-1', enc);
+        const hx = Array.from(new Uint8Array(buf)).map(function (b) {
+          return b.toString(16).padStart(2, '0');
+        }).join('');
+        return 'SAPISIDHASH ' + info.ts + '_' + hx;
+      }
+      return '';
+    } catch (e) { return ''; }
+  }
+
   // -------------------------------------------------------------------------
   // v1.0.70: Erkennung von Livestreams — diese sind NICHT herunterladbar.
   // Merkmale: isLive===true, isLiveDvrEnabled===true ohne Streams,
@@ -959,29 +999,41 @@
         console.warn('[xYT] Keine VISITOR_DATA im Seitenkontext gefunden — LOGIN_REQUIRED-Risiko');
       }
       try {
-        // v1.0.80: Player-Request per Seiten-`fetch` statt GM_xmlhttpRequest.
-        // GM_xmlhttpRequest läuft im Tampermonkey-Sandbox-Kontext ohne die
-        // Browser-Session → YouTube antwortet mit LOGIN_REQUIRED
-        // ("Sign in to confirm you're not a bot"). fetch läuft im Seiten-Kontext
-        // mit der echten YouTube-Session und umgeht die Bot-Prüfung (verifiziert
-        // 2026-08-28 im Playwright: Seiten-fetch liefert status OK, 25+ Formate).
-        //
-        // v1.0.83: credentials:'include' ergänzt. In Yandex-Browser isoliert die
-        // Tampermonkey-Addon-World den Default (same-origin), sodass die echten
-        // YouTube-Session-Cookies NICHT mitgesendet werden → YouTube wertet den
-        // Request als anonym/Bot → LOGIN_REQUIRED ("Sign in to confirm... not a bot"),
-        // obwohl der Nutzer eingeloggt ist. credentials:'include' erzwingt, dass
-        // die Seiten-Cookies (SAPISID etc.) dem Player-Request mitgegeben werden
-        // (verifiziert an HAR: req['cookies'] war 0 ohne credentials).
-        fetch(YT_PLAYER_ENDPOINT, {
-          method: 'POST',
-          headers: headers,
-          body: body,
-          credentials: 'include',
-          referrerPolicy: 'unsafe-url'
-        }).then(function (res) {
-          return res.json();
-        }).then(function (j) {
+        // v1.0.84: Authorization (SAPISIDHASH) vorbereiten. Der Hash braucht
+        // crypto.subtle (async) — wir berechnen ihn hier und setzen den Header,
+        // BEVOR fetch läuft. In Yandex reicht credentials:'include' nicht, weil
+        // die Addon-World die Cookies nicht durchreicht; der Authorization-Header
+        // wird aber immer mitgesendet und identifiziert die eingeloggte Session.
+        buildSapisidHash().then(function (authHeader) {
+          if (authHeader) {
+            headers['Authorization'] = authHeader;
+            dbg('[xYT] Authorization gesetzt (SAPISIDHASH) — Länge ' + authHeader.length);
+          } else {
+            console.warn('[xYT] Kein SAPISIDHASH (kein SAPISID-Cookie/crypto.subtle) — LOGIN_REQUIRED-Risiko');
+          }
+          // v1.0.80: Player-Request per Seiten-`fetch` statt GM_xmlhttpRequest.
+          // GM_xmlhttpRequest läuft im Tampermonkey-Sandbox-Kontext ohne die
+          // Browser-Session → YouTube antwortet mit LOGIN_REQUIRED
+          // ("Sign in to confirm you're not a bot"). fetch läuft im Seiten-Kontext
+          // mit der echten YouTube-Session und umgeht die Bot-Prüfung (verifiziert
+          // 2026-08-28 im Playwright: Seiten-fetch liefert status OK, 25+ Formate).
+          //
+          // v1.0.83: credentials:'include' ergänzt. In Yandex-Browser isoliert die
+          // Tampermonkey-Addon-World den Default (same-origin), sodass die echten
+          // YouTube-Session-Cookies NICHT mitgesendet werden → YouTube wertet den
+          // Request als anonym/Bot → LOGIN_REQUIRED ("Sign in to confirm... not a bot"),
+          // obwohl der Nutzer eingeloggt ist. credentials:'include' erzwingt, dass
+          // die Seiten-Cookies (SAPISID etc.) dem Player-Request mitgegeben werden
+          // (verifiziert an HAR: req['cookies'] war 0 ohne credentials).
+          fetch(YT_PLAYER_ENDPOINT, {
+            method: 'POST',
+            headers: headers,
+            body: body,
+            credentials: 'include',
+            referrerPolicy: 'unsafe-url'
+          }).then(function (res) {
+            return res.json();
+          }).then(function (j) {
           const status = j && j.playabilityStatus && j.playabilityStatus.status;
           // v1.0.70: Livestream-Statuswerte mit verständlicher Meldung abfangen.
           if (status === 'LIVE_STREAM_OFFLINE' || status === 'LIVE_STREAM_ENDED') {
@@ -1003,6 +1055,12 @@
           resolve(j);
         }).catch(function (e) {
           reject(new Error('ANDROID_VR-Netzwerk-/Parsefehler: ' + (e && e.message ? e.message : String(e))));
+        });
+        }).catch(function (e) {
+          // buildSapisidHash()-Kette: wenn der Hash nicht berechnet werden kann,
+          // gehen wir trotzdem weiter (ohne Authorization-Header) oder rejected.
+          // reject(e) nur bei hartem Fehler; sonst still weiter.
+          reject(new Error('ANDROID_VR-Vorbereitung fehlgeschlagen: ' + (e && e.message ? e.message : String(e))));
         });
       } catch (e) {
         reject(e);

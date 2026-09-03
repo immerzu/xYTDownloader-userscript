@@ -1090,3 +1090,25 @@ referrerPolicy: 'unsafe-url'
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.83.user.js` (MD5 `dfce8144243adf38bc3cb41fddd0d948`, cmp-identisch mit Arbeitsversion). Syntax OK (`node --check`).
 
+## 50. v1.0.84 — Fix LOGIN_REQUIRED im Yandex (Authorization-Header aus SAPISID, unabhängig vom Cookie-Transport)
+
+**Stand:** 2026-09-03 — v1.0.83 (`credentials:'include'`) löste den Fehler **nicht**: Der Yandex-`fetch` reichte die Session-Cookies auch mit `credentials:'include'` NICHT durch (Addon-Welt-Isolation in Yandex strenger als in Chromium). HAR-Beleg weiterhin: `req['cookies']=0` beim xYT-Player-Request.
+
+### Empirischer Test (Playwright-Browser, gleiche Video-ID `dQw4w9WgXcQ`)
+Per `page.evaluate` im Seiten-Kontext den identischen VISIONOS-Request nachgebaut:
+- ohne Authorization → `status: OK`, `adaptive: 27` (Playwright reicht Cookies durch)
+- mit `Authorization: SAPISIDHASH <ts>_<sha1>` → ebenfalls `status: OK`, `adaptive: 27`
+→ Der `Authorization`-Header ist bei YouTube gültig und identifiziert die eingeloggte Session; in Chromium war er nicht nötig (doppelt sicher), aber er wird **als Request-Header immer mitgesendet** — auch wenn die Addon-Welt die Cookies nicht durchreicht (genau das Yandex-Problem).
+
+### Änderung
+`fetchAndroidVrPlayer` (v1.0.84):
+- neue Funktion `getSapisidAuth()` — liest `SAPISID` aus `document.cookie` (Seiten-Kontext) und baut `ts + ' ' + sapisid + ' ' + ts`.
+- neue `async buildSapisidHash()` — berechnet per Web Crypto SHA1 und liefert `'SAPISIDHASH <ts>_<hex>'`.
+- In `fetchAndroidVrPlayer` wird vor dem `fetch` `buildSapisidHash().then(...)` aufgerufen und `headers['Authorization']` gesetzt (falls SAPISID verfügbar); `credentials:'include'` und `referrerPolicy:'unsafe-url'` bleiben erhalten.
+- Falback: Wenn kein SAPISID-Cookie / kein `crypto.subtle`, Warnung auf Konsole, Request läuft ohne Authorization weiter (LOGIN_REQUIRED-Risiko bleibt, kein Rethrow).
+
+`@version`/`MY_VERSION` 1.0.83 → 1.0.84.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.84.user.js` (MD5 `5cb3ddcda194244d1ab6c4ffc67f4fb8`, cmp-identisch mit Arbeitsversion). Syntax OK (`node --check`).
+
+
