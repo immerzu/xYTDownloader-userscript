@@ -36,7 +36,14 @@
 - Kurzlinks (youtu.be/…) sind nicht abgedeckt
 
 ## WICHTIGE Erkenntnisse
+0. **⚠️ ERSTER CHECK BEI `LOGIN_REQUIRED / "Sign in to confirm you're not a bot"`: VPN AUSSCHALTEN!** (2026-09-03, entscheidende Ursache)
+   - **Symptom:** Beim YouTube-Download erscheint `Formate konnten nicht geladen werden: YouTube-Status: LOGIN_REQUIRED – Sign in to confirm you're not a bot`. Fehler tritt **überall** auf (xYT-Skript egal welche Version, JDownloader2, sogar normales YouTube-Seiten-HTML liefert `playabilityStatus:LOGIN_REQUIRED, logged_in:0`). JD2 meldet es selbst als `ERROR_TEMPORARILY_UNAVAILABLE`.
+   - **Root Cause:** Ein aktiver **VPN** — YouTube stuft die VPN-IP als Bot ein und sperrt die Downloads. NICHT ein Code-/Versions-/Login-Bug.
+   - **Proof:** Fast ein ganzer Tag vergeudeter Code-Experimente (v1.0.85–88: Web-Player-Stream-Umbau, wholeFile-Flag, 403-Fixes usw.) — alles UNNÖTIG. Als der Nutzer den VPN ausschaltete, funktionierte der Download sofort normal (v1.0.81-Code genügt).
+   - **Fix:** VPN ausschalten (bzw. andere IP/Netz), dann funktionieren xYT UND JDownloader2 normal. Bei VPN an ist youtube über die gesperrten Nicht-WEB-Clients (Android/VISIONOS) + JD2 gleichermaßen blockiert.
+   - **Erkenntnis für die Zukunft:** Bevor irgendein LOGIN_REQUIRED/403/`not a bot`-Fehler im xYT-Code gesucht wird → zuerst beim Nutzer nachfragen, ob ein **VPN/Tor/Proxy** aktiv ist. Code-Experimente nur starten, wenn KEIN VPN aktiv ist.
 1. **GF-Validierung (2026-08-28):** Upload schlägt fehl, wenn `@description` > 500 Zeichen (674 war zu lang) ODER `@description:de` fehlt → genau deshalb fehlte das Skript auf der deutschen by-site-Seite (nicht Cache, nicht Sandbox).
+1b. **WARNUNG zu den Versions-Experimenten von 2026-09-03 (durch VPN-Fehler ausgelöst, unnötig):** Der Web-Player-Umbau (`getPlayerApiResponse`, `wholeFile`, 403-Fast-Path) war **durch den VPN-Fehler ausgelöst und unnötig**. WICHTIG daher: **v1.0.88** (2026-09-03 installiert & im Yandex VERIFIZIERT FUNKTIONIEREND sobald VPN aus) ist im Kern nur der einfache **v1.0.81-VISIONOS-Code** mit hochgezogener Versionsnummer — NICHT der komplexe Web-Player-Umbau. Damit ist die gewünschte "zurück auf funktionierende Version" = **v1.0.81-Code (FACT/Core VISIONOS)** identisch mit v1.0.88. Falls komplexe Umbau-Versionen (getPlayerApiResponse/wholeFile, d. h. die frühe v1.0.85–v1.0.87) veröffentlicht wurden, auf einfachen VISIONOS-Stand zurückrollen.
 2. **Yandex-Tampermonkey-Korruption nach Rechner-Neustart (2026-08-08):** xhr_failed/403-Fehler waren NICHT im Script — Tampermonkey war beschädigt.
    - **Fix:** Cookies löschen → Tampermonkey komplett entfernen → Browser neu starten → Tampermonkey neu installieren → Script frisch importieren
 3. **Alle Experimente (v1.0.55–v1.0.67) waren unnötig:** pageFetch, JD2-Methode, GM_download, <a download>, streamHeaders — alles zurückgerollt.

@@ -2,7 +2,7 @@
 // @name         xYTDownloader
 // @name:de      xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.87
+// @version      1.0.88
 // @description YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging. / One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging. / Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
 // @description:de YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch, /shorts und /live. Keine externen APIs, direkter VISIONOS-Client. DASH-Merging für hohe Auflösungen mit Ton.
 // @author       Ede
@@ -13,6 +13,7 @@
 // @match        *://youtube.com/shorts/*
 // @match        *://*.youtube.com/shorts/*
 // @exclude      *://music.youtube.com/*
+// @grant        GM_xmlhttpRequest
 // @grant        GM_download
 // @grant        GM_addStyle
 // @connect      googlevideo.com
@@ -65,7 +66,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.87';
+  const MY_VERSION = '1.0.88';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -166,44 +167,10 @@
     utcOffsetMinutes: 0
   };
 
-  // Qualitätsstufen (Höhe -> API-Formatwert). Reihenfolge = Anzeige.
-  const VIDEO_QUALITIES = [
-    // v1.0.42: NICHT MEHR GENUTZT — war die Qualitätsliste des alten Panels
-    // (≤v1.0.39, savenow/dubs.io-Ära). Seit v1.0.40 kommen die Auflösungen
-    // aus den echten ANDROID_VR-Streams (extractStreams → video). Auskom-
-    // mentiert statt gelöscht (Arbeitsauftrag: ungenutzten Code markieren).
-    /*
-    { h: 4320, label: '4320p (8K)', api: '8k' },
-    { h: 2160, label: '2160p (4K)', api: '4k' },
-    { h: 1440, label: '1440p (2K)', api: '1440' },
-    { h: 1080, label: '1080p (Full HD)', api: '1080' },
-    { h: 720, label: '720p (HD)', api: '720' },
-    { h: 480, label: '480p', api: '480' },
-    { h: 360, label: '360p', api: '360' },
-    { h: 240, label: '240p', api: '240' },
-    { h: 144, label: '144p', api: '144' },
-    */
-  ];
-  const AUDIO_FORMATS = [
-    // v1.0.42: NICHT MEHR GENUTZT (altes Panel ≤v1.0.39). Auskommentiert
-    // statt gelöscht.
-    /*
-    { api: 'mp3', label: 'MP3 (Standard)' },
-    { api: 'm4a', label: 'M4A' },
-    { api: 'aac', label: 'AAC' },
-    { api: 'opus', label: 'OPUS' },
-    { api: 'ogg', label: 'OGG' },
-    { api: 'flac', label: 'FLAC (UHQ)' },
-    { api: 'wav', label: 'WAV (UHQ)' },
-    { api: 'webm', label: 'WEBM (UHQ)' },
-    */
-  ];
-
   // -------------------------------------------------------------------------
   // Kleine Helfer
   // -------------------------------------------------------------------------
   const $ = (sel, root) => (root || document).querySelector(sel);
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   function getVideoId() {
     // v1.0.41: Shorts-URLs (/shorts/<videoId>) haben KEINEN ?v=-Parameter —
@@ -249,62 +216,6 @@
     } catch (e) { /* ignore */ }
     return null;
   }
-
-  // v1.0.85: FRISCHE Player-Response aus dem abspielenden Web-Player lesen.
-  // Die statische `ytInitialPlayerResponse` (getPlayerResponse oben) enthält in
-  // POT-Sessions keine/leere streamingData. Der geladene Player (<div id="movie_player">)
-  // besitzt nach dem Abspielen aber die vom Web-Player (clientName 1) erfolgreich
-  // erzeugte Response MIT signierten googlevideo-Stream-URLs. Diese können wir
-  // abgreifen und für den Download nutzen — kein eigener clientName-28-Request,
-  // der in POT-Sessions mit LOGIN_REQUIRED scheitert.
-  function getPlayerApiResponse(videoId) {
-    try {
-      const mp = document.querySelector('#movie_player');
-      if (!mp) return null;
-      // Moderne Player: videoId-Methode oder Player-Response.
-      let pr = null;
-      if (typeof mp.getPlayerResponse === 'function') {
-        pr = mp.getPlayerResponse();
-      }
-      if (!pr && typeof mp.getVideoData === 'function') {
-        // getVideoData liefert nur Metadaten; echter Stream-Kern kommt anders.
-        // → kein brauchbarer Fallback hier.
-      }
-      if (pr && pr.videoDetails && pr.videoDetails.videoId
-          && pr.streamingData && (pr.streamingData.formats || pr.streamingData.adaptiveFormats)) {
-        // Sicherstellen, dass es zum gewünschten Video passt (nicht stale).
-        if (videoId && pr.videoDetails.videoId !== String(videoId)) {
-          dbg('[xYT] Player-Response videoId abweichend (stale) — ignoriert');
-          return null;
-        }
-        pr.__xytSource = 'player-api-stream';
-        return pr;
-      }
-    } catch (e) { /* ignore */ }
-    return null;
-  }
-
-  // Tatsächlich verfügbare Höhen aus adaptiveFormats (höchste Auflösung je Stufe),
-  // damit die Liste dem entspricht, was für dieses Video existiert.
-  // v1.0.42: NICHT MEHR GENUTZT (war für das alte Panel ≤v1.0.39; seit v1.0.40
-  // liefert extractStreams die flache Liste direkt aus den Streams). Auskom-
-  // mentiert statt gelöscht (Arbeitsauftrag: ungenutzten Code markieren).
-  /* === AUSKOMMENTIERT v1.0.42 (ungenutzt) ===
-  function getAvailableHeights() {
-    const heights = new Set();
-    try {
-      const pr = getPlayerResponse();
-      const sd = pr && pr.streamingData;
-      const all = []
-        .concat(Array.isArray(sd.formats) ? sd.formats : [])
-        .concat(Array.isArray(sd.adaptiveFormats) ? sd.adaptiveFormats : []);
-      for (const f of all) {
-        if (f && Number.isFinite(f.height) && f.height > 0) heights.add(f.height);
-      }
-    } catch (e) { }
-    return heights;
-  }
-  === ENDE AUSKOMMENTIERT v1.0.42 === */
 
   function getVideoTitle() {
     // v1.0.45: Bei Shorts wird ytInitialPlayerResponse beim Scrollen NICHT
@@ -404,38 +315,7 @@
   // -------------------------------------------------------------------------
   const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB je Chunk
 
-  // v1.0.71: Browser-Header, die YouTube für googlevideo.com-Range-Anfragen
-  // voraussetzt. Ohne diese Header antwortet YouTube mit 403 Forbidden
-  // (leere Chunk-Antwort). GM_xmlhttpRequest ergänzt KEINEN Referer
-  // automatisch — wir müssen ihn explizit setzen.
-  const VIDEO_REQUEST_HEADERS = {
-    'Origin': 'https://www.youtube.com',
-    'Referer': 'https://www.youtube.com/',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
-    'Sec-CH-UA': '"Not/A)Brand";v="99", "Google Chrome";v="151", "Chromium";v="151"',
-    'Sec-CH-UA-Mobile': '?0',
-    'Sec-CH-UA-Platform': '"Windows"',
-    'Sec-CH-UA-Bitness': '"64"',
-    'Sec-CH-UA-Arch': '"x86"',
-    'Sec-CH-UA-Wow64': '?0',
-    'Sec-CH-UA-Platform-Version': '"19.0.0"',
-    'Accept': '*/*',
-    'Accept-Language': 'de,en;q=0.9'
-  };
-
-  // Header-Builder: Range-Header (vom Aufrufer gesetzt) überschreibt nicht,
-  // aber alle anderen Browser-Header werden ergänzt, wenn fehlend.
-  function buildVideoHeaders(extra) {
-    const h = Object.assign({}, VIDEO_REQUEST_HEADERS);
-    if (extra) {
-      for (const k in extra) {
-        if (extra.hasOwnProperty(k)) h[k] = extra[k];
-      }
-    }
-    return h;
-  }
-
-  // v1.0.72: Range-Chunk per native window.fetch laden. Die Range wird als
+  // v1.0.72: Range-Chunk per native window.fetch geladen. Die Range wird als
   // `&range=START-END` DIREKT in die Stream-URL geschrieben — so lädt der
   // Stream Audio itag 140 und Video itag 401 komplett per `&range=` +
   // `&ratebypass=yes`. Zusätzlich werden der `Referer`-Header auf die
@@ -444,39 +324,22 @@
   // rende Request-Set. Liefert {status, bytes, ok, headers}.
   function fetchRangeChunk(url, start, end) {
     let u = String(url);
-    // v1.0.85: URL-Art erkennen. VISIONOS/ANDROID-DASH-URLs tragen bereits
-    // `range=` und erwarten die Range-Segmentierung (dann `ratebypass` + Firefox-
-    // Referer). Der WEB-Player (c=WEB, progressive itag 18) liefert dagegen eine
-    // KOMPLETTE Datei-URL, die KEIN `range=` und kein Firefox-Referer verträgt —
-    // sonst antwortet YouTube mit 403 Forbidden (belegt durch Nutzer-Screenshot:
-    // "Download fehlgeschlagen: Forbidden" bei 360p). Deshalb: nur bei bereits
-    // vorhandenem `range=` die Chunk-Zusätze anwenden, sonst die Original-URL
-    // unverändert (native fetch, korrekter Referer/UA) direkt abrufen.
-    const isRangeUrl = /[?&]range=/.test(u);
-    const host = u.split('?')[0];
-    if (isRangeUrl) {
-      if (!/ratebypass=/i.test(u)) {
-        u += '&ratebypass=yes';
-      }
-      // für Range-URLs: Firefox-Ref/UA beibehalten (bewährtes Request-Set)
-      return fetch(u, {
-        headers: {
-          'Referer': host,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:76.0) Gecko/20100101 Firefox/76.0',
-          'Accept-Encoding': 'identity'
-        }
-      }).then(function (res) {
-        if (!res.ok) return { status: res.status, bytes: null, ok: false, headers: res.headers };
-        return res.arrayBuffer().then(function (ab) {
-          return { status: res.status, bytes: ab, ok: true, headers: res.headers };
-        });
-      }).catch(function (err) {
-        return { status: 0, bytes: null, ok: false, err: err, headers: null };
-      });
+    if (!/range=/i.test(u)) {
+      u += (u.indexOf('?') >= 0 ? '&' : '?') + 'range=' + start + '-' + end;
     }
-    // NON-Range-URL (WEB-progressiv): unverändert laden (kompletter File-Body,
-    // ohne range/ratebypass, ohne Firefox-Referer-Override).
-    return fetch(u).then(function (res) {
+    if (!/ratebypass=/i.test(u)) {
+      u += '&ratebypass=yes';
+    }
+    // Referer auf die googlevideo-URL selbst; UA/Firefox-Desktop;
+    // kein Accept-Encoding (identisch), damit die Rohbytes nicht dekomprimiert werden.
+    const host = u.split('?')[0];
+    return fetch(u, {
+      headers: {
+        'Referer': host,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:76.0) Gecko/20100101 Firefox/76.0',
+        'Accept-Encoding': 'identity'
+      }
+    }).then(function (res) {
       if (!res.ok) return { status: res.status, bytes: null, ok: false, headers: res.headers };
       return res.arrayBuffer().then(function (ab) {
         return { status: res.status, bytes: ab, ok: true, headers: res.headers };
@@ -486,45 +349,15 @@
     });
   }
 
-  function downloadUrl(url, filename, expectedSize, wholeFile) {
+  function downloadUrl(url, filename, expectedSize) {
     let knownTotal = Number(expectedSize) || 0;   // v1.0.38: let, damit die Probe die Größe nachtragen kann
+    if (typeof GM_xmlhttpRequest !== 'function') {
+      fallbackDownload(url, filename);
+      return true;
+    }
     const chunks = [];
     let received = 0;
     let probed = false; // v1.0.38: nur EINE Größen-Probe pro Download
-
-    // v1.0.85/86: Komplette-Datei-URLs (Web-Player / ohne `range=`) mit EINEM
-    // fetch laden — kein Range-Clipping, kein Firefox-Referer. wholeFile=True
-    // erzwingt das auch dann, wenn die URL zufällig `range=` enthält (Web-Player
-    // URL, die von YouTube nicht gechunkt werden darf → sonst 403 Forbidden).
-    if (wholeFile || !/[?&]range=/.test(String(url))) {
-      return new Promise(function (resolve) {
-        fetch(String(url)).then(function (res) {
-          if (!res.ok) throw new Error('leere Chunk-Antwort (Status ' + res.status + ')');
-          return res.arrayBuffer();
-        }).then(function (ab) {
-          const buf = new Uint8Array(ab);
-          chunks.push(buf);
-          received = buf.byteLength;
-          if (knownTotal > 0) {
-            const pct = Math.max(0, Math.min(100, Math.round((received / knownTotal) * 100)));
-            setBarProgress(pct);
-            setStatusText('Download läuft: ' + pct + ' % (' + (received / 1048576).toFixed(1) + ' / ' + (knownTotal / 1048576).toFixed(1) + ' MB)');
-          } else {
-            setBarProgress(100);
-            setStatusText('Download abgeschlossen: ' + (received / 1048576).toFixed(1) + ' MB');
-          }
-          dbg('[xYT] DL-WHOLE: received=' + received + ' (progressiv/OHNE range, kompletter Body)');
-          finishDownload();
-          resolve();
-        }).catch(function (err) {
-          const st = document.createElement('div');
-          st.className = 'xyt-dl-status err';
-          st.textContent = 'Download fehlgeschlagen: ' + (err && err.message ? err.message : String(err));
-          panel.appendChild(st);
-          resolve();
-        });
-      });
-    }
 
     function reportProgress() {
       if (knownTotal > 0) {
@@ -990,46 +823,6 @@
     return '';
   }
 
-  // v1.0.84: Authorization-Header aus der SAPISID-Cookie generieren.
-  // In Yandex-Browser isoliert Tampermonkey die Addon-World so streng, dass der
-  // fetch-Seiten-Kontext die echten YouTube-Session-Cookies NICHT durchreicht
-  // (HAR-Beleg: req['cookies']=0 beim Player-Request) — selbst mit
-  // credentials:'include'. Ein explizit gesetzter 'Authorization'-Header wird
-  // aber IMMER als Request-Header mitgesendet, unabhängig vom Cookie-Transport.
-  // YouTube akzeptiert eingeloggte Client-Requests anhand dieses Headers
-  // (wie der echte Web-Player: 'SAPISIDHASH <ts>_<sha1(ts sapid ts)>').
-  // Verifiziert 2026-09-03 im Playwright: VISIONOS-Request mit Authorization
-  // → status OK, adaptive 27.
-  function getSapisidAuth() {
-    try {
-      const m = document.cookie.match(/(?:^|;\s*)SAPISID=([^;]+)/);
-      if (!m) return '';
-      const sapisid = m[1];
-      const ts = Math.floor(Date.now() / 1000);
-      return { sapisid: sapisid, ts: ts, payload: ts + ' ' + sapisid + ' ' + ts };
-    } catch (e) { return ''; }
-  }
-
-  // v1.0.84: Web-Crypto-SHA1 für den SAPISIDHASH (async). Fallback: falls
-  // crypto.subtle fehlt, Viele Addon-Welten haben nur TextEncoder — wir lassen
-  // den Authorization-Header dann weg (LOGIN_REQUIRED-Risiko bleibt, aber kein
-  // Rethrow).
-  async function buildSapisidHash() {
-    try {
-      const info = getSapisidAuth();
-      if (!info) return '';
-      const enc = new TextEncoder().encode(info.payload);
-      if (crypto && crypto.subtle && crypto.subtle.digest) {
-        const buf = await crypto.subtle.digest('SHA-1', enc);
-        const hx = Array.from(new Uint8Array(buf)).map(function (b) {
-          return b.toString(16).padStart(2, '0');
-        }).join('');
-        return 'SAPISIDHASH ' + info.ts + '_' + hx;
-      }
-      return '';
-    } catch (e) { return ''; }
-  }
-
   // -------------------------------------------------------------------------
   // v1.0.70: Erkennung von Livestreams — diese sind NICHT herunterladbar.
   // Merkmale: isLive===true, isLiveDvrEnabled===true ohne Streams,
@@ -1084,41 +877,19 @@
         console.warn('[xYT] Keine VISITOR_DATA im Seitenkontext gefunden — LOGIN_REQUIRED-Risiko');
       }
       try {
-        // v1.0.84: Authorization (SAPISIDHASH) vorbereiten. Der Hash braucht
-        // crypto.subtle (async) — wir berechnen ihn hier und setzen den Header,
-        // BEVOR fetch läuft. In Yandex reicht credentials:'include' nicht, weil
-        // die Addon-World die Cookies nicht durchreicht; der Authorization-Header
-        // wird aber immer mitgesendet und identifiziert die eingeloggte Session.
-        buildSapisidHash().then(function (authHeader) {
-          if (authHeader) {
-            headers['Authorization'] = authHeader;
-            dbg('[xYT] Authorization gesetzt (SAPISIDHASH) — Länge ' + authHeader.length);
-          } else {
-            console.warn('[xYT] Kein SAPISIDHASH (kein SAPISID-Cookie/crypto.subtle) — LOGIN_REQUIRED-Risiko');
-          }
-          // v1.0.80: Player-Request per Seiten-`fetch` statt GM_xmlhttpRequest.
-          // GM_xmlhttpRequest läuft im Tampermonkey-Sandbox-Kontext ohne die
-          // Browser-Session → YouTube antwortet mit LOGIN_REQUIRED
-          // ("Sign in to confirm you're not a bot"). fetch läuft im Seiten-Kontext
-          // mit der echten YouTube-Session und umgeht die Bot-Prüfung (verifiziert
-          // 2026-08-28 im Playwright: Seiten-fetch liefert status OK, 25+ Formate).
-          //
-          // v1.0.83: credentials:'include' ergänzt. In Yandex-Browser isoliert die
-          // Tampermonkey-Addon-World den Default (same-origin), sodass die echten
-          // YouTube-Session-Cookies NICHT mitgesendet werden → YouTube wertet den
-          // Request als anonym/Bot → LOGIN_REQUIRED ("Sign in to confirm... not a bot"),
-          // obwohl der Nutzer eingeloggt ist. credentials:'include' erzwingt, dass
-          // die Seiten-Cookies (SAPISID etc.) dem Player-Request mitgegeben werden
-          // (verifiziert an HAR: req['cookies'] war 0 ohne credentials).
-          fetch(YT_PLAYER_ENDPOINT, {
-            method: 'POST',
-            headers: headers,
-            body: body,
-            credentials: 'include',
-            referrerPolicy: 'unsafe-url'
-          }).then(function (res) {
-            return res.json();
-          }).then(function (j) {
+        // v1.0.80: Player-Request per Seiten-`fetch` statt GM_xmlhttpRequest.
+        // GM_xmlhttpRequest läuft im Tampermonkey-Sandbox-Kontext ohne die
+        // Browser-Session → YouTube antwortet mit LOGIN_REQUIRED
+        // ("Sign in to confirm you're not a bot"). fetch läuft im Seiten-Kontext
+        // mit der echten YouTube-Session und umgeht die Bot-Prüfung (verifiziert
+        // 2026-08-28 im Playwright: Seiten-fetch liefert status OK, 25+ Formate).
+        fetch(YT_PLAYER_ENDPOINT, {
+          method: 'POST',
+          headers: headers,
+          body: body
+        }).then(function (res) {
+          return res.json();
+        }).then(function (j) {
           const status = j && j.playabilityStatus && j.playabilityStatus.status;
           // v1.0.70: Livestream-Statuswerte mit verständlicher Meldung abfangen.
           if (status === 'LIVE_STREAM_OFFLINE' || status === 'LIVE_STREAM_ENDED') {
@@ -1140,12 +911,6 @@
           resolve(j);
         }).catch(function (e) {
           reject(new Error('ANDROID_VR-Netzwerk-/Parsefehler: ' + (e && e.message ? e.message : String(e))));
-        });
-        }).catch(function (e) {
-          // buildSapisidHash()-Kette: wenn der Hash nicht berechnet werden kann,
-          // gehen wir trotzdem weiter (ohne Authorization-Header) oder rejected.
-          // reject(e) nur bei hartem Fehler; sonst still weiter.
-          reject(new Error('ANDROID_VR-Vorbereitung fehlgeschlagen: ' + (e && e.message ? e.message : String(e))));
         });
       } catch (e) {
         reject(e);
@@ -1210,15 +975,9 @@
     const audioOnly = [];
 
     function normalize(f, srcArray) {
-      // v1.0.86: wholeFile-Flag je Quelle. Web-Player-Response
-      // (__xytSource='player-api-stream') liefert KOMPLETTE Datei-URLs —
-      // diese dürfen NICHT per `range=` gechunkt werden (403). VISIONOS/eigener
-      // Request-Logik bleibt range-fähig.
-      const isWebProgressiv = pr && pr.__xytSource === 'player-api-stream' && srcArray === 'formats';
       return {
         itag: f.itag,
         url: f.url,
-        wholeFile: isWebProgressiv,   // nur progressive (itag18) → kompletter Body
         height: f.height || 0,
         width: f.width || 0,
         // v1.0.41: Auflösung anhand des qualityLabel (z. B. "720p60" → 720).
@@ -1701,36 +1460,7 @@
         renderPanelMessage('Keine gültige Videoseite erkannt (kein ?v= Parameter).', true);
         return;
       }
-      // v1.0.85: Stream-Quellen-Strategie für POT-Sessions.
-      // 1) Bevorzugt: die FRISCHE Response des abspielenden Web-Players
-      //    (#movie_player), die signierte googlevideo-URLs enthält und keinen
-      //    eigenen clientName-28-Request (LOGIN_REQUIRED-Risiko) braucht.
-      let pr = getPlayerApiResponse(videoId);
-      if (pr) {
-        dbg('[xYT] Streams aus dem abspielenden Web-Player übernommen (POT-sicher)');
-      } else {
-        // 2) Kein Player-State verfügbar → eigener Innertube-Request.
-        //    (funktioniert in Sessions ohne POT-Sperre)
-        try {
-          pr = await fetchAndroidVrPlayer(videoId);
-          if (pr) pr.__xytSource = 'visApi'; // nur zur Info
-        } catch (fetchErr) {
-          // 3) Fallback auf eingebettete Response (letzter Ausweg)
-          console.warn('[xYT] Innertube-Fetch fehlgeschlagen (' + (fetchErr && fetchErr.message) + ') — Fallback auf eingebettete ytInitialPlayerResponse');
-          const embedded = getPlayerResponse();
-          if (embedded && embedded.streamingData
-              && (embedded.streamingData.formats || embedded.streamingData.adaptiveFormats)) {
-            embedded.__xytSource = 'embedded-fallback';
-            pr = embedded;
-          } else {
-            throw fetchErr;
-          }
-        }
-      }
-      if (!pr || !pr.streamingData) {
-        renderPanelMessage('Keine Player-Antwort mit streamingData — Video evtl. POT-gesperrt/age-restricted.', true);
-        return;
-      }
+      const pr = await fetchAndroidVrPlayer(videoId);
       const streams = extractStreams(pr);
       if (streams.progressive.length === 0 && streams.videoOnly.length === 0 && streams.audioOnly.length === 0) {
         // v1.0.70: Livestream-Fall sauber abfangen.
@@ -2021,7 +1751,7 @@
         return;
       }
 
-      downloadUrl(stream.url, filename, stream.size, stream.wholeFile);
+      downloadUrl(stream.url, filename, stream.size);
 
       st.textContent = 'Download gestartet: ' + filename;
       st.className = 'xyt-dl-status';
