@@ -2,7 +2,7 @@
 // @name         xYTDownloader
 // @name:de      xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.85
+// @version      1.0.86
 // @description YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging. / One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging. / Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
 // @description:de YouTube-Downloader-Userscript mit einem Klick. Unterstützt alle Qualitäten bis 4K mit Ton. Funktioniert auf /watch, /shorts und /live. Keine externen APIs, direkter VISIONOS-Client. DASH-Merging für hohe Auflösungen mit Ton.
 // @author       Ede
@@ -65,7 +65,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.85';
+  const MY_VERSION = '1.0.86';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -444,22 +444,39 @@
   // rende Request-Set. Liefert {status, bytes, ok, headers}.
   function fetchRangeChunk(url, start, end) {
     let u = String(url);
-    if (!/range=/i.test(u)) {
-      u += (u.indexOf('?') >= 0 ? '&' : '?') + 'range=' + start + '-' + end;
-    }
-    if (!/ratebypass=/i.test(u)) {
-      u += '&ratebypass=yes';
-    }
-    // Referer auf die googlevideo-URL selbst; UA/Firefox-Desktop;
-    // kein Accept-Encoding (identisch), damit die Rohbytes nicht dekomprimiert werden.
+    // v1.0.85: URL-Art erkennen. VISIONOS/ANDROID-DASH-URLs tragen bereits
+    // `range=` und erwarten die Range-Segmentierung (dann `ratebypass` + Firefox-
+    // Referer). Der WEB-Player (c=WEB, progressive itag 18) liefert dagegen eine
+    // KOMPLETTE Datei-URL, die KEIN `range=` und kein Firefox-Referer verträgt —
+    // sonst antwortet YouTube mit 403 Forbidden (belegt durch Nutzer-Screenshot:
+    // "Download fehlgeschlagen: Forbidden" bei 360p). Deshalb: nur bei bereits
+    // vorhandenem `range=` die Chunk-Zusätze anwenden, sonst die Original-URL
+    // unverändert (native fetch, korrekter Referer/UA) direkt abrufen.
+    const isRangeUrl = /[?&]range=/.test(u);
     const host = u.split('?')[0];
-    return fetch(u, {
-      headers: {
-        'Referer': host,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:76.0) Gecko/20100101 Firefox/76.0',
-        'Accept-Encoding': 'identity'
+    if (isRangeUrl) {
+      if (!/ratebypass=/i.test(u)) {
+        u += '&ratebypass=yes';
       }
-    }).then(function (res) {
+      // für Range-URLs: Firefox-Ref/UA beibehalten (bewährtes Request-Set)
+      return fetch(u, {
+        headers: {
+          'Referer': host,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:76.0) Gecko/20100101 Firefox/76.0',
+          'Accept-Encoding': 'identity'
+        }
+      }).then(function (res) {
+        if (!res.ok) return { status: res.status, bytes: null, ok: false, headers: res.headers };
+        return res.arrayBuffer().then(function (ab) {
+          return { status: res.status, bytes: ab, ok: true, headers: res.headers };
+        });
+      }).catch(function (err) {
+        return { status: 0, bytes: null, ok: false, err: err, headers: null };
+      });
+    }
+    // NON-Range-URL (WEB-progressiv): unverändert laden (kompletter File-Body,
+    // ohne range/ratebypass, ohne Firefox-Referer-Override).
+    return fetch(u).then(function (res) {
       if (!res.ok) return { status: res.status, bytes: null, ok: false, headers: res.headers };
       return res.arrayBuffer().then(function (ab) {
         return { status: res.status, bytes: ab, ok: true, headers: res.headers };
@@ -474,6 +491,39 @@
     const chunks = [];
     let received = 0;
     let probed = false; // v1.0.38: nur EINE Größen-Probe pro Download
+
+    // v1.0.85: Progressive/WEB-URL OHNE `range=` liefert die KOMPLETTE Datei.
+    // Kein Range-Chunking und kein Firefox-Referer — ein einziges fetch reicht
+    // (sonst 403 Forbidden, siehe Nutzer-Screenshot "Download fehlgeschlagen: Forbidden").
+    if (!/[?&]range=/.test(String(url))) {
+      return new Promise(function (resolve) {
+        fetch(String(url)).then(function (res) {
+          if (!res.ok) throw new Error('leere Chunk-Antwort (Status ' + res.status + ')');
+          return res.arrayBuffer();
+        }).then(function (ab) {
+          const buf = new Uint8Array(ab);
+          chunks.push(buf);
+          received = buf.byteLength;
+          if (knownTotal > 0) {
+            const pct = Math.max(0, Math.min(100, Math.round((received / knownTotal) * 100)));
+            setBarProgress(pct);
+            setStatusText('Download läuft: ' + pct + ' % (' + (received / 1048576).toFixed(1) + ' / ' + (knownTotal / 1048576).toFixed(1) + ' MB)');
+          } else {
+            setBarProgress(100);
+            setStatusText('Download abgeschlossen: ' + (received / 1048576).toFixed(1) + ' MB');
+          }
+          dbg('[xYT] DL-WHOLE: received=' + received + ' (progressiv/OHNE range, kompletter Body)');
+          finishDownload();
+          resolve();
+        }).catch(function (err) {
+          const st = document.createElement('div');
+          st.className = 'xyt-dl-status err';
+          st.textContent = 'Download fehlgeschlagen: ' + (err && err.message ? err.message : String(err));
+          panel.appendChild(st);
+          resolve();
+        });
+      });
+    }
 
     function reportProgress() {
       if (knownTotal > 0) {

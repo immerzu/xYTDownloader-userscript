@@ -1135,4 +1135,19 @@ Per `page.evaluate` im Seiten-Kontext den identischen VISIONOS-Request nachgebau
 
 **Hinweis (unverifiziert):** Diese v1.0.85 greift nur, wenn der `#movie_player` eine echte (URL-tragende) Response hält. In einer frisch geöffneten Seite muss ggf. der Download-Klick warten, bis der Player geladen hat; für volle Verifikation ist ein Test in der betroffenen Nutzer-Session nötig, der hier nicht remote durchführbar war.
 
+## 52. v1.0.86 — Fix 403 Forbidden beim WEB-progressiven Download (kein Range-Clipping ohne range=)
+
+**Stand:** 2026-09-03 — Nach v1.0.85 erschienen dem Nutzer zwei Fenster: Formatliste **wird jetzt korrekt geladen** (`Video herunterladen` + `360p · 18.2 MB` → der `LOGIN_REQUIRED`-Fehler beim Panel-Laden ist damit **behoben**). Beim Klick auf 360p kam aber `Video: 360p` + **`Download fehlgeschlagen: Forbidden`** (HTTP 403) auf `googlevideo.com`.
+
+**Ursache:** Die aus der WEB-Player-Response (clientName 1, `c=WEB`, progressive itag 18) übernommene URL ist eine **komplette Datei-URL ohne `range=`**. Der bisherige `fetchRangeChunk` fügte ihr trotzdem `?range=…` bzw. `&range=…` + `&ratebypass=yes` hinzu und setzte `Referer`/`User-Agent` (Firefox) um → YouTube wertete das als illegale Replay-Anfrage → `403 Forbidden`.
+
+### Änderung (v1.0.86)
+- `fetchRangeChunk`: URL-Art erkennen. Nur wenn die URL **bereits `range=`** enthält (VISIONOS/ANDROID-DASH), werden `ratebypass` + Firefox-Ref/UA gesetzt. Nicht-Range-URL (`c=WEB` progressive) wird **unverändert** mit nativem `fetch` geladen.
+- `downloadUrl`: für URLs **ohne `range=`** sofortiger Fast-Path — ein einziges `fetch(url)` lädt die komplette Datei (kein Range-Chunking, kein `&ratebypass`, kein Firefox-Referer), speichert via `finishDownload()` und zeigt sauberen Fortschritt/Status. Bei HTTP-Fehler wird sauber `Download fehlgeschlagen: …` im Panel gerendert.
+- Version 1.0.85 → 1.0.86.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.86.user.js` (MD5 `256ad2b6058083775c21de624f500942`, cmp-identisch mit Arbeitsversion). Syntax OK (`node --check`).
+
+**Hinweis (unverifiziert):** Der Fix greift nur für progressive/WEB-URLs ohne `range=`. DASH-Merge-Streams (video-only + audio) laufen weiterhin über den Range-Pfad und sind von dieser Änderung nicht betroffen.
+
 
