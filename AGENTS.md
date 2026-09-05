@@ -5,12 +5,12 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 ## Build-Regeln (bindend)
 
 - Arbeitsversion: `xyt-downloader.user.js` (Projektstamm) — dort werden Änderungen gemacht.
-- Jeder neue Build: Version in `@version` (Metablock) **und** `MY_VERSION` (Z. 76) anheben — **nie dieselbe Version zweimal** ausliefern.
+- Jeder neue Build: Version in `@version` (Metablock) **und** `MY_VERSION` (Z. 67) anheben — **nie dieselbe Version zweimal** ausliefern.
 - Build nach `Ausgabe\xyt-downloader-v<version>.user.js` kopieren (alte Builds bleiben erhalten), per `cmp` + `md5sum` verifizieren.
 - `BERICHT.md` pro Build mit neuem Abschnitt aktualisieren.
 - **Git-Repo vorhanden** (seit 2026-08-05): `immerzu/xYTDownloader-userscript` auf GitHub. Commits/Pushes sind ERLAUBT und erwünscht (nur keine sensiblen Daten hochladen — API-Key bleibt Platzhalter). **GitHub-Release pro Version** (seit v1.0.76): Git-Tag `v<version>` + `gh release create` mit `Ausgabe/xyt-downloader-v<version>.user.js` als Asset (Details im Skill `greasy-fork-publish`, Ablauf C).
 - **R8/Minify: immer verboten** (nicht zutreffend hier, aber projektübergreifende Regel).
-- savenow.to/dubs.io-Fallback-Code (`DEAKTIVIERTER FALLBACK-PFAD`, Z. 1182) **deaktiviert lassen**, nie reaktivieren.
+- savenow.to/dubs.io-Fallback-Code ist **seit v1.0.82 vollständig aus dem Script entfernt** (inkl. @connect) — **nie wieder einbauen**.
 
 ## Architektur
 
@@ -33,14 +33,14 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 
 ## Grenzen
 
-- `@connect` explizit (Wildcards unzuverlässig in Yandex): `p.lbserver.xyz`, `*.lbserver.xyz`, `*.googlevideo.com` u. a.
+- `@connect` explizit: nur noch `googlevideo.com` + `*.googlevideo.com` (savenow/lbserver/dubs-@connect seit v1.0.82 entfernt).
 - Kurzlinks (youtu.be/…) sind nicht abgedeckt (nur /watch-, /shorts- und /live-Seiten).
 - Livestreams: echte Live-Übertragungen sind nicht herunterladbar (erkennbar via `isLivePlayerResponse`, Z. 872); beendete Livestreams (VODs) mit progressiven Formaten funktionieren.
 
-## Veröffentlichung (Stand v1.0.80)
+## Veröffentlichung (Stand v1.0.89)
 
-- Greasy Fork: https://greasyfork.org/de/scripts/589972-xytdownloader (Name „xYTDownloader", Skript-ID 589972; **online v1.0.80**, Konto `immerzu`)
-- **GF-Validierung (bindend, seit v1.0.78):** `@description` **max. 500 Zeichen** (aktuell 402) UND **`@description:de`-Zeile Pflicht** (aktuell 226) — ohne beides schlägt der Upload fehl und das Skript erscheint NICHT auf der deutschen by-site-Seite (`/de/scripts/by-site/youtube.com`). Auch `@name:de` gesetzt (seit v1.0.77).
+- Greasy Fork: https://greasyfork.org/de/scripts/589972-xytdownloader (Name „xYTDownloader", Skript-ID 589972; **online v1.0.89**, Konto `immerzu`)
+- **GF-Validierung (bindend, seit v1.0.78):** `@description` **max. 500 Zeichen** (aktuell 402) — die dokumentierte Upload-Hartgrenze. **`@description:de`/`@name:de` sind seit v1.0.89 bewusst ENTFERNT** (mit Locale-Zeilen zeigte GF überall nur die deutsche Kurzbeschreibung; gewünscht ist die einheitliche DE/EN/RU-Zeile — live auf GF bestätigt). Nicht wieder hinzufügen ohne GF-Display-Check (Details: BERICHT §55, FACT-Erkenntnis 1c).
 - **Webhook-Auto-Update: verifiziert funktionierend** (v1.0.76 vom 27.08. kam per Webhook — GF-Versions-Zeitstempel 16:17 MESZ = Delivery 14:17:07Z, 19 s nach Commit). **Achtung: Der Webhook-Pfad validiert NICHT** (übernimmt Roh-Code, auch @description > 500 Zeichen ohne @description:de). Der GF-Admin zeigt „Letzte erfolgreiche Synchronisierung" nur für den manuellen Sync — nicht für Webhook-Übernahmen. **Für saubere GF-Validierung: manuellen Upload bevorzugen** (https://greasyfork.org/de/scripts/589972/versions/new, Skill `greasy-fork-publish`, Ablauf A, FileReader-Trick).
 - Install-Link: https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js
 - GitHub-Repo: https://github.com/immerzu/xYTDownloader-userscript (öffentlich, Branch main)

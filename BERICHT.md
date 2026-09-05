@@ -1164,4 +1164,33 @@ Per `page.evaluate` im Seiten-Kontext den identischen VISIONOS-Request nachgebau
 
 **Hinweis (unverifiziert):** Greift für 360p-progressive. DASH-Merge (720p+) nutzt weiterhin `downloadStreamBytes`/Range — falls dort erneut 403 auftritt, braucht es eine analoge WholeFile-Behandlung für adaptive Quellen.
 
+## 54. v1.0.88 — Rückkehr zum einfachen VISIONOS-Stand (v1.0.81-Basis) + Aufräumarbeit (nachdokumentiert 2026-09-05)
+
+**Stand:** 2026-09-03 (Commit `db4b8c6`) — Nach der **VPN-Erkenntnis** (2026-09-03: „LOGIN_REQUIRED / Sign in to confirm you're not a bot" war kein Code-Bug, sondern ein aktiver VPN des Nutzers — siehe FACT-Erkenntnisse 0 und 1b) wurden die unnötigen Web-Player-Umbau-Experimente v1.0.85–87 (`getPlayerApiResponse`/`wholeFile`, durch den VPN-Fehler ausgelöst) verworfen. Code = **funktionierender VISIONOS-Stand (v1.0.81-Basis)**: Seiten-fetch mit `credentials:'include'` (v1.0.83) und SAPISID-Authorization-Header (v1.0.84) bleiben erhalten.
+
+- Aufräumarbeit: tote Einträge entfernt (savenow/dubs-Fallback inkl. @connect, `gmFetch`/`hostOf`/`gmFetchJson`, `VIDEO_REQUEST_HEADERS`/`buildVideoHeaders`, leere `VIDEO_QUALITIES`/`AUDIO_FORMATS`, `getAvailableHeights`, `sleep`).
+- FACT.md: VPN-Erkenntnis 0 + Versions-Hinweis 1b (v1.0.88 ≡ v1.0.81-Code) ergänzt.
+- **Build:** `Ausgabe\xyt-downloader-v1.0.88.user.js` (MD5 `34cd1771cf83af5ab21e33c6c550e7a5`), cmp-identisch mit Commit-Stand `db4b8c6` (Blob-Hash `8292501b…` — nachdokumentiert, der Abschnitt fehlte bislang).
+- **GitHub:** Tag `v1.0.88` → `db4b8c6`, Release 2026-09-03T18:16Z **mit** Asset `xyt-downloader-v1.0.88.user.js`.
+- **Greasy Fork:** v1.0.88 live (Webhook-Basis für die v1.0.89-Locale-Entfernung).
+
+**Anmerkung (v1.0.81/82, ebenfalls ohne eigenen BERICHT-Abschnitt):** v1.0.81 = VISIONOS in allen öffentlichen Beschreibungen (ANDROID_VR → VISIONOS); v1.0.82 = toter savenow/dubs-Fallback-Code entfernt (Downloads komplett per Seiten-fetch). Beide sind in der Commit-Historie dokumentiert (`a62bb34`, `f7f029d`).
+
+## 55. v1.0.89 — @description:de/@name:de entfernt (GF-Kurzbeschreibung einheitlich DE/EN/RU) + MY_VERSION-Abgleich (Build-Nachzug)
+
+**Stand:** 2026-09-05 — Mit gesetzten Locale-Zeilen zeigte Greasy Fork (deutsche Ansicht) nur die deutsche Kurzbeschreibung. Ziel: **einheitliche DE/EN/RU-Kurzbeschreibung**. Deshalb:
+- Commit `a6211f4`: `@description:de` entfernt, `@version` 1.0.88 → 1.0.89.
+- Commit `338a45d`: `@name:de`-Locale-Zeile entfernt („GF zeigt Kurzbeschreibung einheitlich DE/EN/RU").
+- **Greasy Fork:** v1.0.89 live — Webhook-Übernahme 2026-09-05T14:32:59Z (API `code_updated_at`), GF-API bestätigt `version: 1.0.89` und die einheitliche DE/EN/RU-Kurzbeschreibung (ohne @description:de-Einfluss).
+- **GitHub:** Tag `v1.0.89` → `338a45d`, Release 2026-09-05T14:38:27Z — zunächst **ohne Asset** (Build existierte noch nicht).
+
+**Nachzug (2026-09-05):** Beim Metablock-Bump war `MY_VERSION` (Z. 67) vergessen worden → Inkonsistenz `@version` 1.0.89 vs. `MY_VERSION '1.0.88'` (Console-Log „[xYT] Script geladen v1.0.88", Instanz-Flag 1.0.88). Behoben:
+- `MY_VERSION` auf `'1.0.89'` angeglichen (einzige `1.0.88`-Referenz im Code, `git diff` = genau diese eine Zeile).
+- `node --check` → SYNTAX OK.
+- **Build:** `Ausgabe\xyt-downloader-v1.0.89.user.js` (MD5 `9b6ed5edea2df5d476ddf748ff37ee04`), cmp-identisch mit Arbeitsversion (`fc /b`: keine Unterschiede; Blob-Hash `f7d473843a2ed7c19497ccf63de032479d858c7e`).
+- **GitHub-Release-Asset nachgezogen:** `gh release upload v1.0.89` → Asset `xyt-downloader-v1.0.89.user.js` (2026-09-05T15:17:28Z, 92.066 Bytes) am bestehenden Release v1.0.89.
+- BERICHT §54/§55 nachdokumentiert; **AGENTS.md + FACT.md auf Stand v1.0.89 aktualisiert** (u. a. Locale-Zeilen-Status korrigiert: `@description:de`/`@name:de` sind seit v1.0.89 **bewusst entfernt** — nicht wieder hinzufügen; GF-Validierungs-Hartgrenze bleibt `@description` ≤ 500 Zeichen).
+
+**Hinweis:** Der Push des `MY_VERSION`-Fixes löst eine erneute Webhook-Übernahme von v1.0.89 aus (nur Code-Inhalt, Version bleibt 1.0.89) — für installierte Nutzer kein sichtbares Update, da Tampermonkey gegen `@version` vergleicht.
+
 
