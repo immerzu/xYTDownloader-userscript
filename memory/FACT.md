@@ -1,8 +1,8 @@
-# xYTDownloader — FACT SHEET (Stand: v1.0.89, 2026-09-05)
+# xYTDownloader — FACT SHEET (Stand: v1.0.90, 2026-09-06)
 
 ## Kerndaten
 - **Projekt-Root:** `F:\001_Coding_Projekte\xYTDownloader\`
-- **Arbeitsdatei:** `xyt-downloader.user.js` (Projektstamm, 1889 Zeilen)
+- **Arbeitsdatei:** `xyt-downloader.user.js` (Projektstamm, 1891 Zeilen)
 - **Builds:** `Ausgabe\xyt-downloader-v<version>.user.js`
 - **Git-Repo:** `immerzu/xYTDownloader-userscript` (Branch main, GitHub)
 - **Greasy Fork:** Skript-ID 589972, Account `immerzu` (ID 1629833)
@@ -13,12 +13,13 @@
 - **v1.0.80 (2026-09-01):** Fix "LOGIN_REQUIRED — Sign in to confirm you're not a bot" — `fetchAndroidVrPlayer` (Player-Request) nutzt jetzt Seiten-`fetch` statt `GM_xmlhttpRequest` (Seiten-Kontext trägt die Browser-Session, umgeht YouTubes Bot-Prüfung; verifiziert: status OK, 27 adaptiveFormats). GF live + GitHub Release v1.0.80.
 - **v1.0.88 (2026-09-03):** Aufräumarbeit/Rollback auf den einfachen VISIONOS-Stand (v1.0.81-Basis) — die unnötigen Web-Player-Umbau-Experimente v1.0.85–87 (`getPlayerApiResponse`/`wholeFile`) wurden verworfen (Auslöser war ein aktiver VPN, nicht der Code; vgl. Erkenntnisse 0/1b).
 - **v1.0.89 (2026-09-05):** `@description:de` + `@name:de` entfernt — GF-Kurzbeschreibung zeigt einheitlich DE/EN/RU statt nur DE (GF live v1.0.89, Webhook-Übernahme 14:32:59Z). Danach nachgezogen: `MY_VERSION`-Abgleich 1.0.88 → 1.0.89, erster v1.0.89-Build + Release-Asset (BERICHT §54/§55).
+- **v1.0.90 (2026-09-06):** Kurzbeschreibung **lokalisiert** — `@description` (EN-Default, = GF-Skript-Locale) + `@description:de` + `@description:ru`. Grund: GF-Suchfilter macht ein Skript ohne Suffix-Lokalisierungen nur in seiner Skript-Locale auffindbar (xYT war nur in der EN-Suche sichtbar). Ziel: Auffindbarkeit in DE/EN/RU-Suchen (BERICHT §56, Erkenntnis 1d).
 - **Download-Client:** VISIONOS statt ANDROID_VR (Name 1.02, `RealityDevice17,1`) — ANDROID_VR lieferte wieder 403/UNPLAYABLE ohne POT-Token (`fetchAndroidVrPlayer()` Z. 1000)
 - **Download-Fetches:** `&range=` URL-Parameter statt Range-Header + googlevideo-Referer (Range-Header → 403), init-Segment (ftyp+moov) separat laden
 - **Container:** MP4-Präferenz in `codecRank()` (video/mp4 vor webm) — WebM/VP9 itag 313/271 ist EBML und nicht mit `mergeFmp4` muxbar
 - **Metablock (GF-Validierung, WICHTIG):**
-  - `@description`: **max. 500 Zeichen** — aktuelle Kurzfassung 402 Zeichen (DE/EN/RU einzeilig) — die dokumentierte Upload-Hartgrenze
-  - **Seit v1.0.89 KEINE `@description:de`/`@name:de`-Locale-Zeilen mehr** — bewusst entfernt, weil GF sonst (deutsche Ansicht) NUR die deutsche Kurzbeschreibung zeigte; gewünscht ist die einheitliche DE/EN/RU-Zeile (live auf GF bestätigt). Vor v1.0.89 steuerten diese Zeilen die deutsche by-site-Zuordnung (ergänzt v1.0.77/78). NICHT wieder hinzufügen ohne GF-Display-Check (s. Erkenntnis 1c)
+  - `@description`: **max. 500 Zeichen** — aktuell (EN) 146 Zeichen — die dokumentierte Upload-Hartgrenze
+  - **Seit v1.0.90 LOKALISIERT:** `@description` = englische Kurzbeschreibung (Default, entspricht GF-Skript-Locale `en`) + `@description:de` + `@description:ru` (je eigene Zeile). Damit ist das Skript in der GF-Suche unter EN/DE/RU auffindbar (GF-Sprachfilter `filter_locale`; Details BERICHT §56, Erkenntnis 1d). KEIN `@description:en` (würde bei Skript-Locale `en` ignoriert), keine `@name:xx`-Zeilen ohne passendes `@description:xx` (GF-Validierung), keine kombinierten Mischtext-Zeilen. Vor v1.0.90: einheitliche DE/EN/RU-Zeile ohne Suffixe (v1.0.89) → nur in EINER Sprache auffindbar.
 - **description.md** im Repo-Root: Zusatzinfos DE → RU → EN (mehrzeilig, für Greasy Fork)
 
 ## Architektur
@@ -46,6 +47,7 @@
 1. **GF-Validierung (2026-08-28):** Upload schlägt fehl, wenn `@description` > 500 Zeichen (674 war zu lang) ODER `@description:de` fehlt → genau deshalb fehlte das Skript auf der deutschen by-site-Seite (nicht Cache, nicht Sandbox).
 1b. **WARNUNG zu den Versions-Experimenten von 2026-09-03 (durch VPN-Fehler ausgelöst, unnötig):** Der Web-Player-Umbau (`getPlayerApiResponse`, `wholeFile`, 403-Fast-Path) war **durch den VPN-Fehler ausgelöst und unnötig**. WICHTIG daher: **v1.0.88** (2026-09-03 installiert & im Yandex VERIFIZIERT FUNKTIONIEREND sobald VPN aus) ist im Kern nur der einfache **v1.0.81-VISIONOS-Code** mit hochgezogener Versionsnummer — NICHT der komplexe Web-Player-Umbau. Damit ist die gewünschte "zurück auf funktionierende Version" = **v1.0.81-Code (FACT/Core VISIONOS)** identisch mit v1.0.88. Falls komplexe Umbau-Versionen (getPlayerApiResponse/wholeFile, d. h. die frühe v1.0.85–v1.0.87) veröffentlicht wurden, auf einfachen VISIONOS-Stand zurückrollen.
 1c. **Korrektur Locale-Zeilen (2026-09-05):** Erkenntnis 1 („@description:de Pflicht") gilt NICHT mehr normativ: `@description:de`/`@name:de` wurden in v1.0.89 **bewusst entfernt** (mit Locale-Zeilen zeigte GF überall nur die DE-Kurzbeschreibung; gewünscht ist die einheitliche DE/EN/RU-Zeile). v1.0.89 ist live OHNE beide Locale-Zeilen (GF-API bestätigt `version: 1.0.89`). Harte GF-Upload-Grenze bleibt `@description` ≤ 500 Zeichen. Ob der manuelle Upload auch ohne `@description:de` akzeptiert, ist nicht separat getestet (v1.0.77 scheiterte bei 674 Zeichen @description).
+1d. **GF-Sprachfilter — Lokalisierung nötig (2026-09-06, Quellcode-belegt):** Die GF-Suche filtert standardmäßig nach Sprache („Es werden nur Ergebnisse in … angezeigt", `filter_locale`). Jedes Skript hat genau EINE feste Skript-Locale (`script.locale`, beim Erst-Upload per detectlanguage.com gesetzt, danach fix). Nur die `@description` OHNE Suffix wird als Default in genau dieser Skript-Locale gespeichert → eine kombinierte „DE/EN/RU"-Zeile macht das Skript nur in EINER Sprache auffindbar (Live-Test: xVKDownloader nur auf /de/, xYTDownloader nur auf /en/, beide nicht auf /ru/). **Lösung (ab v1.0.90):** `@description` in der Skript-Locale (xYT = EN) + `@description:de` + `@description:ru` → GF speichert je Sprache eine Lokalisierung → Skript erscheint in DE/EN/RU-Suchen. Belege: greasyfork-org/greasyfork `script.rb:175-186` (set_locale nur bei `locale.nil?`), `script.rb:800-844` (update_localized_attribute; Skip bei Suffix == Skript-Locale), `script_indexing.rb:131` (Suchfeld `locale` = alle Lokalisierungen), `script_listings.rb:312-336` (Filter `with[:locale]`). Gilt für ALLE immerzu-GF-Skripte (xVK v1.0.15, xLoader analog).
 2. **Yandex-Tampermonkey-Korruption nach Rechner-Neustart (2026-08-08):** xhr_failed/403-Fehler waren NICHT im Script — Tampermonkey war beschädigt.
    - **Fix:** Cookies löschen → Tampermonkey komplett entfernen → Browser neu starten → Tampermonkey neu installieren → Script frisch importieren
 3. **Alle Experimente (v1.0.55–v1.0.67) waren unnötig:** pageFetch, JD2-Methode, GM_download, <a download>, streamHeaders — alles zurückgerollt.
@@ -69,11 +71,12 @@
 - v1.0.85–87: Web-Player-Umbau (getPlayerApiResponse/wholeFile) — unnötige VPN-Experimente, verworfen
 - v1.0.88: Rollback auf einfachen VISIONOS-Stand (v1.0.81-Basis) + Aufräumarbeit
 - v1.0.89: @description:de/@name:de entfernt (einheitliche GF-Kurzbeschreibung) + MY_VERSION-Abgleich
+- v1.0.90: Kurzbeschreibung lokalisiert (@description EN + :de + :ru) — GF-Suchbarkeit in DE/EN/RU
 - v1.0.55–67: **Alles Experimente — NICHT verwenden**
 
 ## Build-Regeln (bindend)
 - Version in `@version` UND `MY_VERSION` heben — NIE dieselbe Version zweimal!
-- Metablock-GF-Validierung: `@description` **max. 500 Zeichen** (aktuell 402), **`@description:de` Pflicht** (aktuell 226) + **`@name:de`** — sonst scheitert der GF-Upload und das Skript fehlt auf der deutschen by-site-Seite.
+- Metablock-GF-Validierung: `@description` **max. 500 Zeichen**; **lokalisierte Beschreibung** = Default-`@description` in der GF-Skript-Locale (xYT: `en`) + `@description:de` + `@description:ru`. Keine `@name:xx`-Zeilen ohne passendes `@description:xx`.
 - `node --check` vor jedem Build
 - Build per `cp → Ausgabe\`, `cmp` + `md5sum` verifizieren (MD5 im BERICHT.md EINTRAGEN — reale Werte! vgl. §45/46; nie den Wert der Vorversion kopieren)
 - `BERICHT.md` pro Build aktualisieren

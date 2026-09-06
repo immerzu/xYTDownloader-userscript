@@ -1194,3 +1194,18 @@ Per `page.evaluate` im Seiten-Kontext den identischen VISIONOS-Request nachgebau
 **Hinweis:** Der Push des `MY_VERSION`-Fixes löst eine erneute Webhook-Übernahme von v1.0.89 aus (nur Code-Inhalt, Version bleibt 1.0.89) — für installierte Nutzer kein sichtbares Update, da Tampermonkey gegen `@version` vergleicht.
 
 
+
+## 56. v1.0.90 — Kurzbeschreibung lokalisiert (@description EN-Default + :de + :ru) für GF-Suchbarkeit in DE/EN/RU
+
+**Stand:** 2026-09-06 — Grund für die Umkehrung der v1.0.89-Entscheidung: Greasy Fork filtert die Skriptsuche standardmäßig nach Sprache („Es werden nur Ergebnisse in Englisch angezeigt", `filter_locale`). Jedes Skript hat genau EINE feste Skript-Locale (`script.locale`, beim Erst-Upload per detectlanguage.com gesetzt, danach fix). Nur die `@description` OHNE Suffix wird als Default-Beschreibung in genau dieser Skript-Locale gespeichert — die kombinierte „DE / EN / RU"-Zeile erzeugt KEINE en-/ru-Lokalisierung. Deshalb war xYTDownloader (Skript-Locale `en`) nur in der **englischen** Suche auffindbar — nicht in DE und RU (Live-Test 2026-09-06: `/de/…?q=xytdownloader` → „Es wurden keine Skripte gefunden", `/ru/` → „Скрипты не найдены"). Analyse mit Quellcode-Belegen (greasyfork-org/greasyfork, master): `script.rb:175-186` (`set_locale`, nur bei `locale.nil?`), `script.rb:800-844` (`update_localized_attribute`, Suffix-Zeilen → eigene LocalizedScriptAttribute; Skip nur bei == Skript-Locale), `script_indexing.rb:131` (Suchfeld `locale` = alle Lokalisierungen), `script_listings.rb:312-336` (Sprachfilter `with[:locale]`).
+
+**Änderung (Metablock):**
+- `@version` 1.0.89 → 1.0.90; `MY_VERSION` (Z. 67) → `'1.0.90'`.
+- `@description` = **englische** Kurzbeschreibung (Default, entspricht GF-Skript-Locale `en`).
+- `@description:de` = deutsche Kurzbeschreibung (exakter de-Eintrag).
+- `@description:ru` = russische Kurzbeschreibung (exakter ru-Eintrag).
+- Kein `@description:en` (würde bei Skript-Locale `en` von GF ignoriert), keine `@name:xx`-Zeilen (nicht nötig; vermeidet die Validierung „@description:xx muss gefüllt sein").
+
+**Erwartete Wirkung (Display-Check nach Sync):** de-Besucher sehen die deutsche, en-Besucher die englische, ru-Besucher die russische Kurzbeschreibung; die Suche findet das Skript unter `/de/`, `/en/` UND `/ru/`. Die dreisprachigen Zusatzinfos (`description.md`, DE→RU→EN) bleiben unverändert.
+
+**Build:** `node --check` → SYNTAX OK; `Ausgabe\xyt-downloader-v1.0.90.user.js` (MD5 `D514016767D6AB802C8A8369041E7983`), cmp-identisch mit Arbeitsversion.
