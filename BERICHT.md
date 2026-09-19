@@ -1232,4 +1232,9 @@ Per `page.evaluate` im Seiten-Kontext den identischen VISIONOS-Request nachgebau
 
 **Build:** `node --check` → SYNTAX OK; `Ausgabe\xyt-downloader-v1.0.91.user.js` (MD5 `3c79ce9efc376cc43d05da3095976ea0`), cmp-identisch (`fc /b`: keine Unterschiede; Blob-Hash `e45b9a701ae4b01999a8343890662b0a0b508efd`).
 
-**Offen:** Verifikation im Firefox des Nutzers (360p progressiv + DASH-Merge); Push/Release/Greasy-Fork-Sync nach Freigabe.
+**Verifikation (2026-09-19, Nutzer):** Nach dem Update auf v1.0.91 im portablen Firefox 155.0.1: Download läuft („Läuft!") — die Ursache ist damit im betroffenen Browser bestätigt und der Fix validiert.
+
+**Release (2026-09-19):**
+- **GitHub:** Commit `bc997e3`, Tag `v1.0.91` + Release (2026-09-19T07:42:49Z) mit Asset `xyt-downloader-v1.0.91.user.js` (92.919 Bytes, sha256 `2c78c61f…`).
+- **Greasy Fork:** Webhook-Übernahme 2026-09-19T07:42:48Z — GF-API bestätigt `version: 1.0.91` (`locale: en`).
+- **GF-Display-Check:** `/de/scripts?q=xytdownloader` → deutsche Kurzbeschreibung, `/ru/scripts?q=xytdownloader` → russische Kurzbeschreibung (Lokalisierung aus v1.0.90 intakt), jeweils „Letzte Aktualisierung 19.09.2026".
