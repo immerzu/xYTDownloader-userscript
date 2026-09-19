@@ -1,5 +1,7 @@
 # HANDOVER — xYTDownloader (2026-08-09, v1.0.70)
 
+> ⚠️ **HISTORISCH (Stand v1.0.70).** Aktueller Einstieg: `memory\HANDOVER_v1.0.91.md` (2026-09-19) und `memory\FACT.md`. Diese Datei nur noch als Chronik lesen — viele Angaben (ANDROID_VR-Client, GM_xmlhttpRequest-Downloads, API-Key, offene Aufgaben) sind überholt.
+
 ## 1. AKTUELLER ENTWICKLUNGSSTAND
 
 ### Was funktioniert (getestet):
