@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.90
+// @version      1.0.91
 // @description One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging.
 // @description:de YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging.
 // @description:ru Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
@@ -66,7 +66,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.90';
+  const MY_VERSION = '1.0.91';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -318,10 +318,8 @@
   // v1.0.72: Range-Chunk per native window.fetch geladen. Die Range wird als
   // `&range=START-END` DIREKT in die Stream-URL geschrieben — so lädt der
   // Stream Audio itag 140 und Video itag 401 komplett per `&range=` +
-  // `&ratebypass=yes`. Zusätzlich werden der `Referer`-Header auf die
-  // googlevideo-URL selbst, ein Desktop-UA
-  // und `Accept-Encoding: identity` gesetzt — das komplettiert das funktionie-
-  // rende Request-Set. Liefert {status, bytes, ok, headers}.
+  // `&ratebypass=yes`. v1.0.91: bewusst OHNE Custom-Header (siehe unten) — die
+  // signierte URL trägt alles Nötige. Liefert {status, bytes, ok, headers, err}.
   function fetchRangeChunk(url, start, end) {
     let u = String(url);
     if (!/range=/i.test(u)) {
@@ -330,21 +328,24 @@
     if (!/ratebypass=/i.test(u)) {
       u += '&ratebypass=yes';
     }
-    // Referer auf die googlevideo-URL selbst; UA/Firefox-Desktop;
-    // kein Accept-Encoding (identisch), damit die Rohbytes nicht dekomprimiert werden.
-    const host = u.split('?')[0];
-    return fetch(u, {
-      headers: {
-        'Referer': host,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:76.0) Gecko/20100101 Firefox/76.0',
-        'Accept-Encoding': 'identity'
-      }
-    }).then(function (res) {
+    // v1.0.91: KEINE Custom-Header mehr — Firefox-Fix (2026-09-19).
+    // Ursache: 'User-Agent' ist seit Firefox 43 NICHT mehr forbidden und wird in
+    // Firefox tatsächlich gesendet. Als Nicht-Safelisted Header erzwingt er einen
+    // CORS-Preflight, den googlevideo ablehnt (Access-Control-Allow-Headers führt
+    // 'Range', aber kein 'User-Agent') → fetch wirft TypeError → Status 0
+    // („leere Chunk-Antwort (Status 0)"). Chromium verwirft den UA-Header still
+    // (crbug 571722) — deshalb fiel es in Yandex/Chrome nie auf. 'Referer' und
+    // 'Accept-Encoding' sind in beiden Browsern forbidden und kamen nie an.
+    // Die signierte URL trägt alle nötigen Parameter (&range=/&ratebypass=).
+    return fetch(u).then(function (res) {
       if (!res.ok) return { status: res.status, bytes: null, ok: false, headers: res.headers };
       return res.arrayBuffer().then(function (ab) {
         return { status: res.status, bytes: ab, ok: true, headers: res.headers };
       });
     }).catch(function (err) {
+      // v1.0.91: Ursache sichtbar machen (Netzwerk/CORS/Blocker) — wurde vorher
+      // verschluckt; im Panel stand nur „Status 0" ohne jeden Anhaltspunkt.
+      console.warn('[xYT] fetch fehlgeschlagen (Netzwerk/CORS/Erweiterung?): ' + (err && err.message ? err.message : String(err)));
       return { status: 0, bytes: null, ok: false, err: err, headers: null };
     });
   }
@@ -617,13 +618,16 @@
         fetchRangeChunk(currentUrl, start, end).then(function (r) {
           // v1.0.72: 403 → frische URL holen und ab `start` nochmal versuchen.
           if (!r.ok || !r.bytes) {
+            // v1.0.91: Ursache aus dem fetch-Fehler in die Meldung übernehmen
+            // (Status 0 = Netzwerk-/CORS-Abbruch, z. B. durch Erweiterungen).
+            const why = r.err ? ' — ' + (r.err && r.err.message ? r.err.message : String(r.err)) : '';
             if (r.status === 403 || r.status === 416) {
               return refreshUrl().then(function (ok) {
                 if (ok) { nextChunk(start); return; }
-                throw new Error('leere Chunk-Antwort (Status ' + r.status + ')');
+                throw new Error('leere Chunk-Antwort (Status ' + r.status + ')' + why);
               });
             }
-            throw new Error('leere Chunk-Antwort (Status ' + r.status + ')');
+            throw new Error('leere Chunk-Antwort (Status ' + r.status + ')' + why);
           }
           const buf = r.bytes;
           const prev = received;

@@ -1209,3 +1209,27 @@ Per `page.evaluate` im Seiten-Kontext den identischen VISIONOS-Request nachgebau
 **Erwartete Wirkung (Display-Check nach Sync):** de-Besucher sehen die deutsche, en-Besucher die englische, ru-Besucher die russische Kurzbeschreibung; die Suche findet das Skript unter `/de/`, `/en/` UND `/ru/`. Die dreisprachigen Zusatzinfos (`description.md`, DE→RU→EN) bleiben unverändert.
 
 **Build:** `node --check` → SYNTAX OK; `Ausgabe\xyt-downloader-v1.0.90.user.js` (MD5 `D514016767D6AB802C8A8369041E7983`), cmp-identisch mit Arbeitsversion.
+
+## 57. v1.0.91 — Firefox-Fix: „leere Chunk-Antwort (Status 0)" beim DASH-Merge (CORS-Preflight durch den User-Agent-Header)
+
+**Stand:** 2026-09-19 — Der Nutzer meldete im **Firefox (portable 155.0.1)**: Klick auf 360p → Panel zeigt „Starte Download …" / „Video + Audio werden geladen und zusammengeführt …" → **„Fehler: leere Chunk-Antwort (Status 0)"**. Im Yandex/Chromium lief derselbe Code (v1.0.90) fehlerfrei.
+
+### Ursachenanalyse (Beweis, keine Vermutung)
+- **Status 0 ist kein HTTP-Status:** `fetchRangeChunk` liefert ihn ausschließlich, wenn `fetch()` **geworfen** hat (Netzwerk-/CORS-Ebene) — YouTube hat die Anfrage nie beantwortet. Ein URL-/POT-Problem hätte **403** ergeben.
+- **Fehlerstelle:** `fetchRangeChunk` setzte drei Custom-Header: `Referer`, `User-Agent` (Desktop-UA aus v1.0.71/72) und `Accept-Encoding: identity`.
+- **Spec/Browser-Regeln:** `User-Agent` ist seit **Firefox 43 NICHT mehr** forbidden → Firefox sendet ihn tatsächlich; **Chrome/Chromium verwirft ihn stillschweigend** ([Chromium-Bug 571722](https://crbug.com/571722)). `Referer` und `Accept-Encoding` sind in beiden Browsern forbidden (kamen nie an).
+- **Server-Messung (2026-09-19, echte signierte googlevideo-URL, OPTIONS-Preflight):**
+  | angefragter Header | Status | `Access-Control-Allow-Origin` | `Allow-Headers` |
+  |---|---|---|---|
+  | `user-agent` | 200 | **fehlt** | **fehlt** |
+  | `range` | 200 | `https://www.youtube.com` | Whitelist **inkl. `Range`** |
+- **Kette:** Firefox sendet einen Nicht-Safelisted Header (`User-Agent`) → CORS-Preflight (`Access-Control-Request-Headers: user-agent`) → googlevideo erlaubt ihn nicht → Preflight scheitert → `fetch` wirft `TypeError` → **Status 0** → Merge-Pfad bricht ab (dort gibt es keinen Fallback; der progressive Pfad hätte `GM_download` als Notausgang). In Chromium/Yandex bleibt mangels wirksamer Header kein Preflight nötig → Download läuft.
+
+### Änderung (v1.0.91)
+- `fetchRangeChunk`: **keine Custom-Header mehr** (`fetch(u)`) — die signierte URL trägt `&range=`/`&ratebypass=` selbst; Begründung im Code dokumentiert.
+- **Diagnose:** Der bislang verschluckte fetch-Fehler wird jetzt geloggt (`[xYT] fetch fehlgeschlagen (Netzwerk/CORS/Erweiterung?): …`) und im Merge-Pfad an die Panel-Meldung angehängt (statt nur „Status 0" ohne Anhaltspunkt).
+- Version 1.0.90 → 1.0.91 (`@version` + `MY_VERSION`, Z. 69).
+
+**Build:** `node --check` → SYNTAX OK; `Ausgabe\xyt-downloader-v1.0.91.user.js` (MD5 `3c79ce9efc376cc43d05da3095976ea0`), cmp-identisch (`fc /b`: keine Unterschiede; Blob-Hash `e45b9a701ae4b01999a8343890662b0a0b508efd`).
+
+**Offen:** Verifikation im Firefox des Nutzers (360p progressiv + DASH-Merge); Push/Release/Greasy-Fork-Sync nach Freigabe.
