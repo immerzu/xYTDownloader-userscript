@@ -1351,4 +1351,8 @@ Metablock enthält jetzt dauerhaft:
 
 **Build:** `Ausgabe\xyt-downloader-v1.0.97.user.js`, 106.366 B, SHA256 `9eb8edfa8763d059950594b02e7ffcef46a8c06b3209e0ee6b653cd11c96f553`.
 
-**Release:** folgt nach Push und GF-Messung.
+**Release (2026-10-17):**
+- **GitHub:** Commit `1c72511`, Tag `v1.0.97` + Release (2026-10-17T17:45:35Z) mit Asset `xyt-downloader-v1.0.97.user.js` (106.366 Bytes, sha256 `9eb8edfa8763d059950594b02e7ffcef46a8c06b3209e0ee6b653cd11c96f553` — identisch mit dem lokalen Build).
+- **Greasy Fork:** Webhook-Übernahme 2026-10-17T17:45:20Z (2 s nach Push) — GF-API bestätigt `version: 1.0.97`, `code_size: 104237` (LF-normalisiert). `.meta.js` liefert `@version 1.0.97` (Content-Type `text/x-userscript-meta`).
+- **Quellcode-Abgleich:** `.user.js` (104.233 B) = Arbeitsdatei; einzige Abweichung sind **4 Whitespace-Bytes** in den beiden Update-Zeilen (GF schreibt `// @downloadURL https://…` mit einem Leerzeichen, lokal sind es zwei bzw. vier). GF **dupliziert** die Zeilen nicht — es sind genau 2 vorhanden.
+- **Verzögerung beobachtet:** Der erste `user.js`-Abruf direkt nach dem Push lieferte noch v1.0.95 (`Last-Modified 17:26:41`, ETag `6ad3afd1-6be8`); 17 s später war v1.0.97 verfügbar (`Last-Modified 17:45:20`). Die `.meta.js` war bereits aktuell — das erklärt „Update gefunden, aber alte Datei geladen" als reines CDN-Timing.
