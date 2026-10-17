@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.95
+// @version      1.0.97
 // @description One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging.
 // @description:de YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging.
 // @description:ru Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
@@ -20,6 +20,12 @@
 // @run-at       document-idle
 // @noframes
 // @license      MIT
+// v1.0.96: Update-Adressen fest im Metablock. Vorher fehlten beide Zeilen im
+// GitHub-Quellcode — eine lokal installierte .user.js blieb dauerhaft auf ihrer
+// Version, weil Tampermonkey ohne @updateURL/@downloadURL nicht nach Updates
+// sucht. Greasy Fork setzt diese Zeilen beim Ausliefern ohnehin selbst ein.
+// @downloadURL  https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js
+// @updateURL    https://update.greasyfork.org/scripts/589972/xYTDownloader.meta.js
 // ==/UserScript==
 
 /* ============================================================================
@@ -65,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.95';
+  const MY_VERSION = '1.0.97';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);

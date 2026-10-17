@@ -1330,3 +1330,25 @@ Per `page.evaluate` im Seiten-Kontext den identischen VISIONOS-Request nachgebau
 **Release (2026-10-17):**
 - **GitHub:** Commit `92ce04c`, Tag `v1.0.95` + Release (2026-10-17T17:26:58Z) mit Asset `xyt-downloader-v1.0.95.user.js` (105.876 Bytes, sha256 `be487e500c7ec2e5d240eae78d17b0d5a43fdddf1b83f41965fa48af4b5f18d1` — identisch mit dem lokalen Build).
 - **Greasy Fork:** Webhook-Übernahme 2026-10-17T17:26:41Z (8 s nach Push) — GF-API bestätigt `version: 1.0.95`, `code_size: 103753` (LF-normalisiert). **Quellcode-Abgleich:** Install-Artefakt (103.917 B) minus der zwei von GF eingefügten `@downloadURL`/`@updateURL`-Zeilen, LF-normalisiert = Arbeitsdatei → **0 Abweichungen** (2124 Zeilen).
+
+## 61. v1.0.97 — Update-Adressen fest im Metablock (v1.0.96 nachgezogen)
+
+**Stand:** 2026-10-17. v1.0.96 wurde im Browser getestet, aber **nicht veröffentlicht**; v1.0.97 ist funktional identisch und die erste offizielle Fassung mit festen Update-Adressen.
+
+### Änderung
+Metablock enthält jetzt dauerhaft:
+- `@downloadURL https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js`
+- `@updateURL https://update.greasyfork.org/scripts/589972/xYTDownloader.meta.js`
+
+**Grund:** Ohne diese Zeilen sucht Tampermonkey bei einer **lokal** installierten `.user.js` nicht nach Updates — eine ältere lokale Fassung (z. B. v1.0.85) blieb dauerhaft auf ihrer Version, obwohl Greasy Fork weiter war. Greasy Fork setzt die Zeilen beim Ausliefern zwar selbst ein, lokal installierte Dateien hatten sie aber nicht.
+
+**Verifiziert (2026-10-17):** `.meta.js` → HTTP 200, `Content-Type: text/x-userscript-meta`, Metablock mit `@version`; `.user.js` → HTTP 200, enthält beide Zeilen; beide unter fester Script-ID 589972.
+**Nicht rückwirkend:** Bestehende Installationen ohne diese Zeilen müssen einmalig neu installiert werden.
+
+### Prüfungen
+- Diff v1.0.96 → v1.0.97: **nur** `@version` und `MY_VERSION` (2 Zeilen) — funktional identisch.
+- `node --check` OK; `fc /b` Arbeitsdatei ↔ Artefakt ohne Unterschiede.
+
+**Build:** `Ausgabe\xyt-downloader-v1.0.97.user.js`, 106.366 B, SHA256 `9eb8edfa8763d059950594b02e7ffcef46a8c06b3209e0ee6b653cd11c96f553`.
+
+**Release:** folgt nach Push und GF-Messung.
