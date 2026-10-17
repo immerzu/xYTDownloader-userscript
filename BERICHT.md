@@ -1295,4 +1295,6 @@ Per `page.evaluate` im Seiten-Kontext den identischen VISIONOS-Request nachgebau
 
 **Build:** `node --check` OK; `Ausgabe\xyt-downloader-v1.0.93.user.js`, 100.168 B, SHA256 `2eb63d5f6465076c34110b234055b8b97680de77b6a5846fe0ac02d7fb4469ef`. Identität: v1.0.93 minus der beiden Versionszeilen ergibt SHA256 `c50c831aa17a3986d261d84b80f61279bd4998fe1ed91657a895bf054b38036a` — exakt die vom Nutzer getestete TEST-Fassung.
 
-**Release:** folgt nach Push und GF-Messung.
+**Release (2026-10-17):**
+- **GitHub:** Commit `af781c0`, Tag `v1.0.93` + Release (2026-10-17T16:56:57Z) mit Asset `xyt-downloader-v1.0.93.user.js` (100.168 Bytes, sha256 `2eb63d5f6465076c34110b234055b8b97680de77b6a5846fe0ac02d7fb4469ef` — identisch mit dem lokalen Build).
+- **Greasy Fork:** Webhook-Übernahme 2026-10-17T16:56:04Z — GF-API bestätigt `version: 1.0.93`, `code_size: 98149` (LF-normalisiert). **Quellcode-Abgleich:** Install-Artefakt (98.313 B) minus der zwei von GF eingefügten `@downloadURL`/`@updateURL`-Zeilen, LF-normalisiert = Arbeitsdatei → **0 Abweichungen** (2020 Zeilen).
