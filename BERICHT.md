@@ -1238,3 +1238,36 @@ Per `page.evaluate` im Seiten-Kontext den identischen VISIONOS-Request nachgebau
 - **GitHub:** Commit `bc997e3`, Tag `v1.0.91` + Release (2026-09-19T07:42:49Z) mit Asset `xyt-downloader-v1.0.91.user.js` (92.919 Bytes, sha256 `2c78c61f…`).
 - **Greasy Fork:** Webhook-Übernahme 2026-09-19T07:42:48Z — GF-API bestätigt `version: 1.0.91` (`locale: en`).
 - **GF-Display-Check:** `/de/scripts?q=xytdownloader` → deutsche Kurzbeschreibung, `/ru/scripts?q=xytdownloader` → russische Kurzbeschreibung (Lokalisierung aus v1.0.90 intakt), jeweils „Letzte Aktualisierung 19.09.2026".
+
+## 58. v1.0.92 — Button bleibt in der Action-Leiste (sporadischer Player-Fallback behoben)
+
+**Stand:** 2026-10-17 — Der Nutzer meldete per Screenshot, dass der ⬇-Button sporadisch **im Player** (über den Bedienelementen) statt unter dem Video in der Action-Leiste erscheint; gewünscht ist die Position „zwischen Teilen und Speichern".
+
+### Ursachenanalyse (bewiesen im Chromium/Playwright, 2026-10-17)
+- **ID-Duplikate:** YouTube rendert **mehrere** Elemente mit `id="top-level-buttons-computed"` — 3 beim Laden, **29 nach einer SPA-Navigation**. Nur eine ist gefüllt und sichtbar; die übrigen liegen leer/0×0 in `ytd-engagement-panel-section-list-renderer` und `#info-contents`. `querySelector('#top-level-buttons-computed')` liefert immer das **erste** im DOM → je nach Render-Reihenfolge die falsche Leiste → `isElementVisible` schlägt fehl → Player-Fallback. Das erklärt das sporadische Auftreten.
+- **`anchorLocked` war eine Einbahnstraße:** einmal im Player platziert, blieb der Button dort; MutationObserver und Intervall fassten nur nach, wenn der Button unsichtbar war.
+- **`PAGE_START` lief ab Skriptstart:** Nach dem ersten Video war die 4-s-Wartezeit dauerhaft abgelaufen → bei SPA-Wechseln sofortiger Player-Fallback, bevor die Leiste neu gerendert war.
+
+### Änderung (v1.0.92)
+- `getBar()` (neu): erste **gefüllte und sichtbare** Leiste, sonst `null` (Duplikate werden ignoriert).
+- `findAnchor()`: nutzt `getBar()`; auf `/shorts` sofort Player-Overlay (dort gibt es keine Leiste).
+- `barWaitStart` ersetzt `PAGE_START` als Warteanker; Reset bei jedem Video-Wechsel (`scheduleRefresh` + Intervall).
+- `attachButton()`: `anchorLocked` entfernt, prüft den Ist-Zustand (Container + Video-ID + Modus), räumt fremde `#xyt-dl-btn` ab.
+- `insertIntoBar()` (neu): fügt vor „Speichern" (DE) bzw. „Save"/„Save to …" (EN) ein, sonst ans Ende.
+- Intervall + MutationObserver ziehen einen Overlay-Button in die Leiste, sobald sie sichtbar ist.
+
+### Prüfungen
+| Test (Chromium/Playwright, YouTube live) | Ergebnis |
+|---|---|
+| `/watch dQw4w9WgXcQ` | 1 Button, in sichtbarer Leiste, `overlay:false`, Leiste `["19 Mio.","Teilen","⬇ Download"]` |
+| SPA-Wechsel per Klick (`C6Vwl8bD33s`) | 1 Button, in Leiste, `overlay:false` (dabei 29 ID-Duplikate im DOM) |
+| Overlay erzwungen (Button in `#movie_player`) | nach ≤ 3 s zurück in der Leiste, `overlay:false` |
+| `/shorts vE-cOL98DPk` | 1 Button, `overlay:true`, sichtbar, keine Leiste |
+| Button-Klick | Panel offen, 6 Qualitäten 2160p…360p mit Größen |
+| `node --check` | Exit 0 |
+
+**Nutzer-Test (Firefox 155.0.1, Tampermonkey):** bestanden — Freigabe zur Veröffentlichung (Nutzerangabe 2026-10-17). Einschränkung: Im Chromium-Test war der Browser ausgeloggt, daher ohne „Speichern"-Button; die Einfüge-Logik davor ist nur code-seitig belegt.
+
+**Build:** `node --check` OK; `Ausgabe\xyt-downloader-v1.0.92.user.js`, 96.037 B, MD5 `1222617AE350B3364A7206D1D781291B`, `fc /b` keine Unterschiede zur Arbeitsdatei. Identität des getesteten Stands: v1.0.92 minus der beiden Versionszeilen ergibt MD5 `C3DF5EEDD2D7ACD00E8735AA30871C26` (der vom Nutzer getestete Stand).
+
+**Release:** folgt nach Push und GF-Messung.

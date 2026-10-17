@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.91
+// @version      1.0.92
 // @description One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging.
 // @description:de YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging.
 // @description:ru Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
@@ -66,7 +66,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.91';
+  const MY_VERSION = '1.0.92';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -1266,7 +1266,11 @@
   // im Player-Overlay landen und später „springen", sobald die Leiste erscheint.
   const PAGE_START = Date.now();
   const BAR_WAIT_MS = 4000; // so lange auf die Action-Leiste warten, bevor Player-Fallback
-  let anchorLocked = false; // einmal platziert → nicht mehr umhängen (kein Springen)
+  // POSITIONSFIX (2026-10-17): Die Wartezeit gilt JE VIDEO-NAVIGATION, nicht einmal
+  // pro Seiten-Load. Vorher lief sie ab PAGE_START (Skriptstart) und war nach dem
+  // ersten Video dauerhaft abgelaufen — bei jedem SPA-Wechsel fiel der Button
+  // deshalb sofort in den Player, sobald die Leiste kurz (nach-)gerendert wurde.
+  let barWaitStart = PAGE_START;
   let btnVideoId = null;    // v1.0.44: Video-ID, für die der Button aktuell platziert ist.
   let lastNoAnchorLog = 0; // Drossel: „kein Anker"-Meldung max. 1×/s (MutationObserver feuert sehr oft)
 
@@ -1302,19 +1306,32 @@
     } catch (e) { return false; }
   }
 
+  // Die Action-Leiste (Like/Teilen/Speichern) — zentrale Auswahl, damit findAnchor()
+  // und der Positions-Update in attachButton() dieselbe Leiste meinen.
+  // POSITIONSFIX (2026-10-17): YouTube hat MEHRERE Elemente mit der ID
+  // #top-level-buttons-computed (u. a. im Engagement-Panel und in #info-contents).
+  // Diese Duplikate sind leer und 0×0; querySelector() nimmt aber immer das ERSTE
+  // im DOM — je nach Render-Reihenfolge war das die versteckte Leiste, isElementVisible
+  // schlug fehl und der Button landete im Player. Deshalb: nur eine GEFÜLLTE und
+  // SICHTBARE Leiste gilt als Anker.
+  function getBar() {
+    const all = document.querySelectorAll('#top-level-buttons-computed');
+    for (const b of all) {
+      if (!b.children || b.children.length === 0) continue;
+      if (isElementVisible(b)) return b;
+    }
+    return null;
+  }
+
   function findAnchor() {
     // Bevorzugt: Action-Leiste unter dem Video (Like/Teilen/...)
-    const bar =
-      $('#top-level-buttons-computed') ||
-      $('ytd-watch-metadata #top-level-buttons-computed') ||
-      $('#below ytd-menu-renderer #top-level-buttons-computed');
-    // Nur eine SICHTBARE Leiste akzeptieren — während des SPA-Übergangs kann die
-    // Leiste im DOM existieren, aber versteckt sein (display:none im Container,
-    // 0×0-Rect). Dann lieber in den Player-Fallback, der immer sichtbar ist.
-    if (bar && isElementVisible(bar)) return { el: bar, mode: 'bar' };
+    const bar = getBar();
+    if (bar) return { el: bar, mode: 'bar' };
     // Erst nach der Wartezeit auf den Player-Fallback zurückfallen — so erscheint
     // der Button beim Reload direkt in der Leiste statt erst oben rechts im Video.
-    if (Date.now() - PAGE_START < BAR_WAIT_MS) return null;
+    // Auf /shorts gibt es keine Action-Leiste → sofort Player-Overlay statt 4 s warten.
+    const shortsPath = /^\/shorts\//.test(window.location.pathname);
+    if (!shortsPath && Date.now() - barWaitStart < BAR_WAIT_MS) return null;
     // Fallback: über dem Player (schwebend) — auf Shorts gibt es KEINE
     // Action-Leiste; #shorts-player / #player-container / #shorts-container
     // dienen dort als Anker (v1.0.41). WICHTIG: #movie_player kann existieren,
@@ -1345,22 +1362,42 @@
     return null;
   }
 
+  // POSITIONSFIX (2026-10-17): Der Button gehörte bisher per appendChild immer ans
+  // ENDE der Leiste (rechts neben „Speichern"). Jetzt wird er VOR „Speichern" (DE)
+  // bzw. „Save"/„Save to …" (EN) eingefügt; wenn kein solcher Button gefunden wird,
+  // bleibt der bisherige Weg (ans Ende) als Fallback.
+  function insertIntoBar(bar) {
+    try {
+      const kids = bar.querySelectorAll('ytd-button-renderer, yt-button-view-model, button, a[role="button"]');
+      for (const c of kids) {
+        if (c === btn || c.contains(btn)) continue;
+        const raw = (c.getAttribute && (c.getAttribute('aria-label') || c.getAttribute('title'))) || '';
+        const label = String(raw).trim().toLowerCase();
+        if (!label) continue;
+        if (label.indexOf('speichern') >= 0 || label === 'save' || label.indexOf('save to') === 0) {
+          c.insertAdjacentElement('beforebegin', btn);
+          return true;
+        }
+      }
+    } catch (e) { /* ignore */ }
+    bar.appendChild(btn);
+    return true;
+  }
+
   function attachButton() {
     ensureUi();
-    // Stabilität: Wenn der Button bereits platziert UND SICHTBAR ist UND die
-    // Video-ID noch dieselbe ist, bleibt er dort — kein Umhängen zwischen
-    // Player-Overlay und Action-Leiste (kein sichtbarer Sprung).
-    // v1.0.44: btnVideoId-Vergleich — beim Shorts-Scrollen (neue Video-ID im
-    // selben sichtbaren Player-Kontext) MUSS neu platziert werden, sonst bleibt
-    // der Button am alten Short hängen.
-    if (anchorLocked && btn.isConnected && isElementVisible(btn) && btnVideoId === getVideoId()) return true;
+    // Ziel = Action-Leiste, sobald sie sichtbar ist; Player-Overlay nur als
+    // Fallback (Shorts, langsamer Aufbau). Geprüft wird bei jedem Aufruf der
+    // Ist-Zustand (Container + Video-ID + Modus), kein einmal gesetztes Flag —
+    // so wandert der Button aus dem Player zurück in die Leiste, sobald sie da ist.
+    const videoId = getVideoId();
     const anchor = findAnchor();
     if (!anchor) {
       // Diagnose (Anforderung: Zustand in Konsole prüfbar) — aber GEDROSSELT:
       // Der MutationObserver feuert bei jeder YouTube-DOM-Mutation hunderte Male
       // pro Sekunde; ohne Drossel überfluten identische Meldungen die Konsole
       // (Ede: ~1000 Zeilen „kein Anker" in <300 ms). Max. 1 Log pro Sekunde.
-      const waited = Date.now() - PAGE_START;
+      const waited = Date.now() - barWaitStart;
       if (Date.now() - lastNoAnchorLog >= 1000) {
         lastNoAnchorLog = Date.now();
         dbg('[xYT] Button noch nicht injizierbar — kein Anker gefunden (seit ' + waited + ' ms, Wartezeit ' + BAR_WAIT_MS + ' ms). Path: ' + window.location.pathname);
@@ -1387,9 +1424,25 @@
       return false;
     }
     const el = anchor.el;
+    const wantOverlay = anchor.mode !== 'bar';
 
-    if (anchor.mode === 'bar') {
-      if (btn.parentElement === el && btnVideoId === getVideoId()) return true;
+    // Ziel bereits erreicht? Gleicher Container, gleiche Video-ID, gleicher Modus
+    // → nichts tun (kein Flackern, kein unnötiges Reflow).
+    // Die frühere Pauschal-Sperre (anchorLocked) ist bewusst entfernt: Sie ließ
+    // einen einmal im Player platzierten Button dauerhaft dort, auch wenn die
+    // Action-Leiste Sekundenbruchteile später sichtbar wurde.
+    if (btn.parentElement === el && btnVideoId === videoId
+        && btn.classList.contains('xyt-dl-overlay') === wantOverlay) {
+      return true;
+    }
+
+    // Doppelte Buttons entfernen (z. B. aus einer parallel laufenden alten Instanz).
+    try {
+      const all = document.querySelectorAll('#xyt-dl-btn');
+      for (const x of all) { if (x !== btn) x.remove(); }
+    } catch (e) { /* ignore */ }
+
+    if (!wantOverlay) {
       if (btn.parentElement) btn.remove();
       // Inline-Position zurücksetzen (falls zuvor als Overlay position:absolute
       // gesetzt wurde), damit die Leisten-Darstellung (position:relative aus CSS)
@@ -1399,10 +1452,9 @@
       btn.style.right = '';
       btn.style.zIndex = '';
       btn.classList.remove('xyt-dl-overlay');
-      el.appendChild(btn);
-      dbg('[xYT] Button in Action-Leiste (#top-level-buttons-computed) injiziert');
+      insertIntoBar(el);
+      dbg('[xYT] Button in Action-Leiste injiziert (vor „Speichern", sonst ans Ende)');
     } else {
-      if (btn.parentElement === el && btnVideoId === getVideoId()) return true;
       if (btn.parentElement) btn.remove();
       btn.style.position = 'absolute';
       btn.style.bottom = '10px';
@@ -1413,8 +1465,7 @@
       el.appendChild(btn);
       dbg('[xYT] Button als Player-Overlay injiziert (unten rechts, z-index 9999)');
     }
-    anchorLocked = true;
-    btnVideoId = getVideoId();
+    btnVideoId = videoId;
     return true;
   }
 
@@ -1796,6 +1847,7 @@
       const id = getVideoId();
       if (id !== boundVideoId) {
         boundVideoId = id;
+        barWaitStart = Date.now(); // Wartezeit für DIESES Video neu starten
         hidePanel();
         refresh();
       }
@@ -1822,10 +1874,18 @@
       const id = getVideoId();
       if (id !== boundVideoId) {
         boundVideoId = id;
+        barWaitStart = Date.now(); // Wartezeit für DIESES Video neu starten
         hidePanel();
         refresh();
       }
-      if (btn && (!btn.isConnected || !isElementVisible(btn))) attachButton();
+      if (btn && (!btn.isConnected || !isElementVisible(btn))) {
+        attachButton();
+      } else if (btn && btn.classList.contains('xyt-dl-overlay')) {
+        // Button hängt (noch) im Player, obwohl die Leiste inzwischen da ist →
+        // in die Action-Leiste hochziehen (Kern des Positionsfixes).
+        const b = getBar();
+        if (b && isElementVisible(b)) attachButton();
+      }
     } else if (btn && btn.isConnected) {
       btn.remove();
       btnVideoId = null;
@@ -1854,6 +1914,10 @@
           if (/\/(watch|shorts|live)/.test(window.location.pathname) && getVideoId()) {
             attachButton();
           }
+        } else if (btn.classList.contains('xyt-dl-overlay')) {
+          // Sobald die Action-Leiste sichtbar wird, den Button aus dem Player holen.
+          const b = getBar();
+          if (b && isElementVisible(b)) attachButton();
         }
       });
       mo.observe(document.documentElement, { childList: true, subtree: true });
@@ -1872,8 +1936,8 @@
   // Deshalb hier direkt auf history.pushState/replaceState und popstate
   // hören: bei jeder URL-Änderung wird scheduleRefresh() angestoßen, das
   // die neue URL prüft und ggf. die Button-Injektion erneut ausführt.
-  // Doppel-Injektion ist ausgeschlossen: refresh() → attachButton() prüft
-  // anchorLocked + btn.isConnected + boundVideoId, bevor neu gehangen wird.
+  // Doppel-Injektion ist ausgeschlossen: attachButton() prüft Container,
+  // Video-ID und Modus und hängt nur bei Abweichung um.
   // -------------------------------------------------------------------------
   try {
     const origPushState = history.pushState;

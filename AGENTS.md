@@ -20,10 +20,10 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 - `extractStreams(pr)` (Z. 973): liefert `{progressive, videoOnly, audioOnly, video}` — `video` = flache Liste ≥360p, dedupliziert pro **`s.res`** (Label-Auflösung; bei Shorts ist `height` die lange Hochkant-Seite!), beste Codecs avc1 > vp9 > av01, absteigend.
 - `downloadUrl()` (Z. 353): manuelles 4-MB-Range-Chunking (`CHUNK_SIZE` Z. 316), eigene `received`-Zählung (Yandex-`onprogress` ist nicht inkrementell), Blob → `<a download>`. **Achtung Relikt:** das `typeof GM_xmlhttpRequest`-Gate leitet in Umgebungen ohne GM-APIs (z. B. Via-eigene Skript-Engine) still in `fallbackDownload` (GM_download/`window.open`) — obsolet seit v1.0.71, s. FACT „Offene Punkte".
 - `downloadStreamBytes()` (Z. 526): Chunked-Download für den DASH-Merge; `initRange`/`indexEnd` (in `extractStreams.normalize` gesetzt) wird als init-Segment vorangestellt. Bei 403/416 → frische URL über `refreshUrl()`; **Status 0 wird seit v1.0.91 mit Ursache geloggt**, hat aber weiterhin keinen Fallback (offener Punkt).
-- `runDownload(kind, stream, …)` (Z. 1636): direkt bei progressiv; DASH-videoOnly → automatischer Merge mit bestem Audio-Stream (`pickMergeAudio`, Z. 796, itag 140 bevorzugt).
+- `runDownload(kind, stream, …)` (Z. 1687): direkt bei progressiv; DASH-videoOnly → automatischer Merge mit bestem Audio-Stream (`pickMergeAudio`, Z. 796, itag 140 bevorzugt).
 - `mergeFmp4()` (Z. 686): bibliotheksfreies fMP4-Box-Merging (ftyp + moov mit 2 traks + moof/mdat-Segmente; ffmpeg.wasm ist durch YouTube-CSP blockiert).
-- Injektion: `findAnchor()` (Z. 1305) / `attachButton()` (Z. 1348) — Leiste `#top-level-buttons-computed`, 4 s Wartezeit (`BAR_WAIT_MS` Z. 1268), dann Player-Fallback über dem **ersten sichtbaren** Element (`#movie_player` kann 0×0 sein! Kandidaten-Schleife).
-- SPA: `/(watch|shorts|live)/`-Erkennung in `refresh()` (Z. 1804), 1,5-s-Intervall, MutationObserver, pushState/replaceState-Override.
+- Injektion: `getBar()` (Z. 1317, erste **gefüllte, sichtbare** Leiste — YouTube hat mehrere `#top-level-buttons-computed`!) / `findAnchor()` (Z. 1326) / `insertIntoBar()` (Z. 1369, vor „Speichern") / `attachButton()` (Z. 1387) — 4 s Wartezeit (`BAR_WAIT_MS` Z. 1268, Anker `barWaitStart` Z. 1273 je Video), dann Player-Fallback über dem **ersten sichtbaren** Element (`#movie_player` kann 0×0 sein! Kandidaten-Schleife).
+- SPA: `/(watch|shorts|live)/`-Erkennung in `refresh()` (Z. 1856), 1,5-s-Intervall, MutationObserver, pushState/replaceState-Override.
 
 ## Tests
 
@@ -40,9 +40,9 @@ Tampermonkey-Userscript: YouTube-Download-Button mit Qualitätsauswahl, DASH-Mer
 - Kurzlinks (youtu.be/…) sind nicht abgedeckt (nur /watch-, /shorts- und /live-Seiten).
 - Livestreams: echte Live-Übertragungen sind nicht herunterladbar (erkennbar via `isLivePlayerResponse`, Z. 836); beendete Livestreams (VODs) mit progressiven Formaten funktionieren.
 
-## Veröffentlichung (Stand v1.0.91)
+## Veröffentlichung (Stand v1.0.92)
 
-- Greasy Fork: https://greasyfork.org/de/scripts/589972-xytdownloader (Name „xYTDownloader", Skript-ID 589972; **online v1.0.91**, Konto `immerzu`)
+- Greasy Fork: https://greasyfork.org/de/scripts/589972-xytdownloader (Name „xYTDownloader", Skript-ID 589972; **online v1.0.92**, Konto `immerzu`)
 - **GF-Sprachfilter (bindend, seit v1.0.90):** Die GF-Suche filtert standardmäßig nach Sprache — ein Skript ist nur in Sprachen auffindbar, für die lokalisierte Beschreibungen existieren. Deshalb ist die Kurzbeschreibung **lokalisiert**: `@description` = **englische** Kurzbeschreibung (Default; entspricht der GF-Skript-Locale `en` von xYT) + `@description:de` + `@description:ru` (je eine Zeile). **Kein** `@description:en` (wird bei Skript-Locale `en` von GF ignoriert), **keine** `@name:xx`-Zeilen ohne passendes `@description:xx` (GF-Validierungsfehler „can't be blank"), keine kombinierten „DE / EN / RU"-Mischtext-Zeilen (machen das Skript nur in EINER Sprache auffindbar). Begründung + Quellcode-Belege: BERICHT §56, FACT-Erkenntnis 1d. Einzelne `@description`-Zeile bleibt ≤ 500 Zeichen (Upload-Hartgrenze).
 - **Veröffentlichen = Ablauf C (Sync):** Änderung committen + auf `main` pushen; GF zieht `https://raw.githubusercontent.com/immerzu/xYTDownloader-userscript/main/xyt-downloader.user.js`. **Nicht auf den Webhook warten, sondern messen** und bei Bedarf den Admin-Trigger nachziehen (Skill `greasy-fork-publish`, Ablauf C: `gf-admin-sync.mjs`). Manueller Upload (`gf-publish.mjs version`) nur als Fallback.
 - **Verifikation ohne Browser (Pflicht nach jedem Push):** `Invoke-RestMethod https://api.greasyfork.org/scripts/589972.json` (bzw. `https://greasyfork.org/scripts/589972.json`) → `version`, `code_updated_at` (Achtung: `web_fetch` auf `greasyfork.org/…json` scheitert an der Umleitung zu `api.greasyfork.org` — Adresse direkt angeben). **GF-Display-Check:** `/de/`, `/en/`, `/ru/`-Suche `?q=xytdownloader` → Skript vorhanden + sprachrichtige Kurzbeschreibung. Beleg v1.0.91: Übernahme 2026-09-19T07:42:48Z, DE-/RU-Suche ok.
