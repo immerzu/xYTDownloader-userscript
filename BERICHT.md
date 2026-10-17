@@ -1273,3 +1273,26 @@ Per `page.evaluate` im Seiten-Kontext den identischen VISIONOS-Request nachgebau
 **Release (2026-10-17):**
 - **GitHub:** Commit `12b58f6`, Tag `v1.0.92` + Release (2026-10-17T16:30:37Z) mit Asset `xyt-downloader-v1.0.92.user.js` (96.037 Bytes, sha256 `dbd65f09959deb8a1ea5bf720f5cdf77b56b87aa6fb1580c62e317a37e4436a6` — identisch mit dem lokalen Build).
 - **Greasy Fork:** Webhook-Übernahme 2026-10-17T16:30:14Z (9 s nach Push) — GF-API bestätigt `version: 1.0.92`, `code_size: 94078` (LF-normalisiert). **Quellcode-Abgleich:** Install-Artefakt (94.242 B) minus der zwei von GF eingefügten `@downloadURL`/`@updateURL`-Zeilen, LF-normalisiert = Arbeitsdatei → **0 Abweichungen** (1960 Zeilen).
+
+## 59. v1.0.93 — Download-Zuverlässigkeit: Merge-Verlust, Netz-Retry, GM-Gate
+
+**Stand:** 2026-10-17 — Drei bekannte Schwachstellen der Downloadverarbeitung in einem Durchgang behoben. Keine Änderung an UI, Button-Positionierung oder Stream-Erkennung.
+
+### Änderung
+- **B1 (Merge-Fehler):** `runDownload()` speicherte im `catch` nur die Video-Bytes — die bereits vollständig geladene Audiospur ging verloren, obwohl die Meldung „getrennt speichern" behauptete. Jetzt werden **beide** Dateien geschrieben: Video `.mp4` und Audio `.m4a` (bzw. `.webm`, wenn der Audiostream kein MP4 ist); der zweite Download läuft mit 900 ms Abstand, damit der Browser beide annimmt. Die Statusmeldung nennt beide Dateien; scheitert das Audio-Speichern, lautet sie „NUR Video gespeichert (Audio-Speichern fehlgeschlagen)".
+- **B2 (Downloadabbrüche):** `downloadStreamBytes()` kannte nur 403/416. Neu: `isTransientStatus()` (0, 429, 500, 502, 503, 504) und `retryChunk()` — max. **4** Versuche mit 1/2/4/8 s Wartezeit, bei 0/429 zusätzlich frische URL (`refreshUrl`). Wiederholt wird ab **derselben** Byte-Position: keine doppelten Daten, kein Fortschrittssprung. Permanente Fehler (403/404/416) brechen sofort mit klarer Meldung ab. Der progressive Pfad (`downloadUrl`) wiederholt transiente Fehler bis zu 3× vor dem `GM_download`-Fallback.
+- **B3 (GM-Gate):** Das `typeof GM_xmlhttpRequest`-Gate in `downloadUrl()` entfernt und `@grant GM_xmlhttpRequest` aus dem Metablock gelöscht — der native fetch-Pfad läuft jetzt in jeder Umgebung (auch GM-los). `GM_download`/`GM_addStyle` bleiben erhalten.
+
+### Prüfungen (Chromium/Playwright, YouTube live, 2026-10-17)
+| Test | Ergebnis |
+|---|---|
+| 360p progressiv, ohne GM_xmlhttpRequest | 11.839.345 B, `ftyp`, **2 traks** |
+| 480p Merge | 17.551.943 B, `ftyp`, **2 traks**, 6 moof/mdat |
+| transient (1× fetch wirft) | Retry greift, Datei vollständig: 17.551.943 B, 2 traks |
+| Merge-Fehler erzwungen (Nicht-MP4-Bytes) | **2 Downloads**: `TESTTITEL [480p].mp4` + `TESTTITEL [480p] (Audio).m4a` |
+| permanent (fetch wirft immer) | nach 4 Versuchen „Download abgebrochen nach 4 Netzwerkversuchen (Status 0)" + „↻ Erneut versuchen" |
+| Panel | unverändert: 6 Qualitäten 2160p…360p |
+
+**Build:** `node --check` OK; `Ausgabe\xyt-downloader-v1.0.93.user.js`, 100.168 B, SHA256 `2eb63d5f6465076c34110b234055b8b97680de77b6a5846fe0ac02d7fb4469ef`. Identität: v1.0.93 minus der beiden Versionszeilen ergibt SHA256 `c50c831aa17a3986d261d84b80f61279bd4998fe1ed91657a895bf054b38036a` — exakt die vom Nutzer getestete TEST-Fassung.
+
+**Release:** folgt nach Push und GF-Messung.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.92
+// @version      1.0.93
 // @description One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging.
 // @description:de YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging.
 // @description:ru Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
@@ -13,7 +13,6 @@
 // @match        *://youtube.com/shorts/*
 // @match        *://*.youtube.com/shorts/*
 // @exclude      *://music.youtube.com/*
-// @grant        GM_xmlhttpRequest
 // @grant        GM_download
 // @grant        GM_addStyle
 // @connect      googlevideo.com
@@ -66,7 +65,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.92';
+  const MY_VERSION = '1.0.93';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -352,13 +351,15 @@
 
   function downloadUrl(url, filename, expectedSize) {
     let knownTotal = Number(expectedSize) || 0;   // v1.0.38: let, damit die Probe die Größe nachtragen kann
-    if (typeof GM_xmlhttpRequest !== 'function') {
-      fallbackDownload(url, filename);
-      return true;
-    }
+    // B3-Fix (2026-10-17): KEIN GM_xmlhttpRequest-Gate mehr. Der Download läuft
+    // vollständig über natives fetch (fetchRangeChunk); die API wird nirgends
+    // aufgerufen. Das alte Gate schickte GM-lose Umgebungen (z. B. Via) still in
+    // fallbackDownload (GM_download/window.open) — also in einen toten Pfad.
     const chunks = [];
     let received = 0;
     let probed = false; // v1.0.38: nur EINE Größen-Probe pro Download
+    let netTries = 0;   // B2-Fix: begrenzte Wiederholungen bei temporären Fehlern
+    const MAX_NET_TRIES = 3;
 
     function reportProgress() {
       if (knownTotal > 0) {
@@ -452,7 +453,22 @@
           nextChunk(prev + buf.byteLength);
         }
       }).catch(function (e3) {
-        console.warn('[xYT] Chunk-Fehler, Fallback GM_download:', e3);
+        // B2-Fix (2026-10-17): Temporäre Fehler (Netzabbruch/Status 0, 5xx, 429)
+        // werden begrenzt wiederholt, bevor der GM-Fallback greift. Der Chunk wird
+        // dabei NICHT gepusht (received/chunks unverändert) → keine doppelten Daten,
+        // der Balken bleibt stehen statt zu springen.
+        const msg = String((e3 && e3.message) || e3);
+        const permanent = /Status (403|404|416)\b/.test(msg);
+        if (!permanent && netTries < MAX_NET_TRIES) {
+          netTries++;
+          const delay = Math.min(8000, 1000 * Math.pow(2, netTries - 1));
+          dbg('[xYT] DL-TRANSIENT: ' + msg + ' — Versuch ' + netTries + '/' + MAX_NET_TRIES + ' in ' + delay + ' ms');
+          setStatusText('Netzwerkfehler — neuer Versuch ' + netTries + '/' + MAX_NET_TRIES + ' …');
+          setTimeout(function () { nextChunk(start); }, delay);
+          return;
+        }
+        console.warn('[xYT] Chunk-Fehler (' + msg + '), Fallback GM_download:', e3);
+        setStatusText('Download fehlgeschlagen (' + msg + ') — versuche Browser-Download …');
         fallbackDownload(url, filename);
       });
     }
@@ -536,6 +552,31 @@
       // in einer Endlosschleife endet.
       let urlTries = 0;
       const MAX_URL_TRIES = 3;
+      // B2-Fix (2026-10-17): begrenzte Wiederholungen für TEMPORÄRE Fehler
+      // (Status 0 = fetch geworfen/Netzabbruch, 429 Rate-Limit, 5xx Gateway).
+      // Permanente Fehler (403/404/416, alles andere) werden NICHT wiederholt.
+      let netTries = 0;
+      const MAX_NET_TRIES = 4;
+      function isTransientStatus(s) {
+        return s === 0 || s === 429 || s === 500 || s === 502 || s === 503 || s === 504;
+      }
+      function retryChunk(start, status, why) {
+        if (netTries >= MAX_NET_TRIES) {
+          throw new Error('Download abgebrochen nach ' + MAX_NET_TRIES + ' Netzwerkversuchen (Status ' + status + ')' + why);
+        }
+        netTries++;
+        const delay = Math.min(8000, 1000 * Math.pow(2, netTries - 1));
+        dbg('[xYT] TRANSIENT (Status ' + status + why + ') — Versuch ' + netTries + '/' + MAX_NET_TRIES + ' in ' + delay + ' ms ab Byte ' + start);
+        setStatusText('Netzwerkfehler — neuer Versuch ' + netTries + '/' + MAX_NET_TRIES + ' (' + Math.round(delay / 1000) + ' s) …');
+        return new Promise(function (res) { setTimeout(res, delay); }).then(function () {
+          // Status 0/429: frische signierte URL kann helfen (abgelaufene Signatur,
+          // Rate-Limit). Schlägt der Refresh fehl, läuft es mit der alten URL weiter.
+          if (status === 0 || status === 429) {
+            return refreshUrl().then(function () { nextChunk(start); });
+          }
+          nextChunk(start);
+        });
+      }
       // aktuelle URL (wird nach einem 403 durch die frische ersetzt)
       let currentUrl = String(url);
 
@@ -626,6 +667,10 @@
                 if (ok) { nextChunk(start); return; }
                 throw new Error('leere Chunk-Antwort (Status ' + r.status + ')' + why);
               });
+            }
+            // B2-Fix: temporäre Fehler begrenzt wiederholen (Status 0/429/5xx).
+            if (isTransientStatus(r.status)) {
+              return retryChunk(start, r.status, why);
             }
             throw new Error('leere Chunk-Antwort (Status ' + r.status + ')' + why);
           }
@@ -1783,18 +1828,33 @@
         try {
           merged = mergeFmp4(vBytes, aBytes);
         } catch (mergeErr) {
-          // v1.0.72: Merge-Fehler isolieren. AV1/VP9-DASH-Streams (2160p/1440p,
-          // itag 401/313/400/271 usw.) sind segmentiert: ihre ftyp/moov liegen
-          // im initRange statt am Dateianfang — unser bibliotheksfreies
-          // mergeFmp4 kann sie nicht verschachteln. Damit der Download nicht
-          // verloren geht, speichern wir Video + Audio als EINEN MP4-Container
-          // (nur Video-Track fehlt dann, aber die Bytes sind sicher) bzw.
-          // als separate Dateien.
-          console.warn('[xYT] Merge fehlgeschlagen (' + (mergeErr && mergeErr.message ? mergeErr.message : String(mergeErr)) + ') — speichere Video+Audio getrennt.');
-          setStatusText('Merge nicht möglich — speichere Video & Audio getrennt …');
-          // Videodatei (H.264/VP9/AV1-Container, inkl. init) speichern
+          // B1-Fix (2026-10-17): Bisher wurde beim Merge-Fehler NUR die Video-Datei
+          // gespeichert — die bereits vollständig geladene Audiospur ging still
+          // verloren, obwohl die Meldung „getrennt speichern" behauptete. Jetzt
+          // werden BEIDE Dateien geschrieben (Video .mp4 + Audio .m4a/.webm je nach
+          // Container); der zweite Download wird leicht verzögert, damit der Browser
+          // beide annimmt.
+          const mErr = (mergeErr && mergeErr.message ? mergeErr.message : String(mergeErr));
+          console.warn('[xYT] Merge fehlgeschlagen (' + mErr + ') — speichere Video UND Audio getrennt.');
+          const baseName = filename.replace(/\.mp4$/i, '');
+          const audioMp4 = String(mergeAudio.mime || '').toLowerCase().indexOf('audio/mp4') === 0;
+          const audioName = baseName + ' (Audio).' + (audioMp4 ? 'm4a' : 'webm');
+          const audioMime = audioMp4 ? 'audio/mp4' : 'audio/webm';
+          setBarProgress(100);
+          setStatusText('Merge nicht möglich — speichere Video und Audio getrennt (2 Dateien) …');
           saveBlob(new Blob([vBytes], { type: 'video/mp4' }), filename);
-          autoClosePanelAfter(2500);
+          dbg('[xYT] MERGE-ERSATZ: Video ' + vBytes.length + ' B → ' + filename + ' | Audio ' + aBytes.length + ' B → ' + audioName + ' (' + audioMime + ')');
+          setTimeout(function () {
+            try {
+              saveBlob(new Blob([aBytes], { type: audioMime }), audioName);
+              setStatusText('Merge nicht möglich — Video und Audio getrennt gespeichert (2 Dateien).');
+              hint.textContent = 'Zwei Dateien: ' + filename + ' (Video) und ' + audioName + ' (Audio) — Zusammenfügen z. B. mit ffmpeg nötig.';
+            } catch (e5) {
+              console.warn('[xYT] Audio-Speichern fehlgeschlagen: ' + (e5 && e5.message ? e5.message : String(e5)));
+              setStatusText('Merge nicht möglich — NUR Video gespeichert (Audio-Speichern fehlgeschlagen).');
+            }
+            autoClosePanelAfter(4000);
+          }, 900);
           return;
         }
         dbg('[xYT] MERGE-OK: gemergt=' + merged.length + ' B (Video ' + vBytes.length + ' + Audio ' + aBytes.length + ')');
