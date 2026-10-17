@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.93
+// @version      1.0.95
 // @description One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging.
 // @description:de YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging.
 // @description:ru Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
@@ -65,7 +65,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.93';
+  const MY_VERSION = '1.0.95';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -264,6 +264,11 @@
   // Update (spart Reflow bei jedem Chunk). Fallback: querySelector, falls das
   // Panel zwischenzeitlich neu gebaut wurde (Cache veraltet).
   let panelStatusEl = null, panelBarEl = null, panelFillEl = null;
+  // v1.0.94: Schutz gegen veraltete Formatanfragen — jede Anfrage bekommt eine
+  // Sequenznummer; nur die jeweils aktuelle darf das Panel noch verändern.
+  // playerAbort bricht die laufende Anfrage ab (Video-Wechsel, Panel zu, Retry).
+  let loadSeq = 0;
+  let playerAbort = null;
   function refreshPanelRefs() {
     try {
       panelStatusEl = panel.querySelector('.xyt-dl-status');
@@ -891,7 +896,7 @@
     return false;
   }
 
-  function fetchAndroidVrPlayer(videoId) {
+  function fetchAndroidVrPlayer(videoId, externalSignal) {
     return new Promise(function (resolve, reject) {
       // Body: contentPlaybackContext mit html5Preferences +
       // signatureTimestamp statt vis:0
@@ -925,6 +930,34 @@
       } else {
         console.warn('[xYT] Keine VISITOR_DATA im Seitenkontext gefunden — LOGIN_REQUIRED-Risiko');
       }
+      // v1.0.94: Zeitlimit + technischer Abbruch. Ohne Limit blieb das Panel bei
+      // ausbleibender Antwort dauerhaft auf „Formate werden geladen …". Der
+      // AbortController gibt die Verbindung frei; der externe Signalabbruch
+      // (Video-Wechsel / neuer Ladevorgang / Panel geschlossen) greift sofort.
+      const PLAYER_TIMEOUT_MS = 15000;
+      const ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+      let settled = false;
+      let timer = null;
+      function finish(fn, val) {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        fn(val);
+      }
+      timer = setTimeout(function () {
+        try { if (ctrl) ctrl.abort(); } catch (e) { /* ignore */ }
+        finish(reject, new Error('Zeitüberschreitung: YouTube hat innerhalb von ' + (PLAYER_TIMEOUT_MS / 1000) + ' s nicht geantwortet.'));
+      }, PLAYER_TIMEOUT_MS);
+      if (ctrl && externalSignal && typeof externalSignal.addEventListener === 'function') {
+        if (externalSignal.aborted) {
+          finish(reject, new Error('Anfrage abgebrochen.'));
+        } else {
+          externalSignal.addEventListener('abort', function () {
+            try { ctrl.abort(); } catch (e) { /* ignore */ }
+            finish(reject, new Error('Anfrage abgebrochen.'));
+          });
+        }
+      }
       try {
         // v1.0.80: Player-Request per Seiten-`fetch` statt GM_xmlhttpRequest.
         // GM_xmlhttpRequest läuft im Tampermonkey-Sandbox-Kontext ohne die
@@ -935,34 +968,39 @@
         fetch(YT_PLAYER_ENDPOINT, {
           method: 'POST',
           headers: headers,
-          body: body
+          body: body,
+          signal: ctrl ? ctrl.signal : undefined
         }).then(function (res) {
           return res.json();
         }).then(function (j) {
           const status = j && j.playabilityStatus && j.playabilityStatus.status;
           // v1.0.70: Livestream-Statuswerte mit verständlicher Meldung abfangen.
           if (status === 'LIVE_STREAM_OFFLINE' || status === 'LIVE_STREAM_ENDED') {
-            reject(new Error('Dieser Livestream ist nicht verfügbar (offline/beendet). Live-Übertragungen können nicht heruntergeladen werden.'));
+            finish(reject, new Error('Dieser Livestream ist nicht verfügbar (offline/beendet). Live-Übertragungen können nicht heruntergeladen werden.'));
             return;
           }
           if (status && status !== 'OK') {
-            reject(new Error('YouTube-Status: ' + status + (j.playabilityStatus && j.playabilityStatus.reason ? ' — ' + j.playabilityStatus.reason : '')));
+            finish(reject, new Error('YouTube-Status: ' + status + (j.playabilityStatus && j.playabilityStatus.reason ? ' — ' + j.playabilityStatus.reason : '')));
             return;
           }
           if (isLivePlayerResponse(j)) {
-            reject(new Error('Dieses Video ist ein Livestream und kann nicht heruntergeladen werden.'));
+            finish(reject, new Error('Dieses Video ist ein Livestream und kann nicht heruntergeladen werden.'));
             return;
           }
           if (!j || !j.streamingData) {
-            reject(new Error('Keine streamingData in ANDROID_VR-Antwort'));
+            finish(reject, new Error('Keine streamingData in ANDROID_VR-Antwort'));
             return;
           }
-          resolve(j);
+          finish(resolve, j);
         }).catch(function (e) {
-          reject(new Error('ANDROID_VR-Netzwerk-/Parsefehler: ' + (e && e.message ? e.message : String(e))));
+          if (e && e.name === 'AbortError') {
+            finish(reject, new Error('Anfrage abgebrochen.'));
+            return;
+          }
+          finish(reject, new Error('ANDROID_VR-Netzwerk-/Parsefehler: ' + (e && e.message ? e.message : String(e))));
         });
       } catch (e) {
-        reject(e);
+        finish(reject, e);
       }
     });
   }
@@ -1360,9 +1398,24 @@
   // schlug fehl und der Button landete im Player. Deshalb: nur eine GEFÜLLTE und
   // SICHTBARE Leiste gilt als Anker.
   function getBar() {
-    const all = document.querySelectorAll('#top-level-buttons-computed');
+    const all = Array.from(document.querySelectorAll('#top-level-buttons-computed'));
+    // v1.0.95: Bevorzugt die Leiste in der SICHTBAREN ytd-watch-metadata. Beim
+    // SPA-Wechsel bleiben alte Watch-Container (samt eigener Leiste) im DOM;
+    // deren Leiste kann Größe > 0 haben und war damit ein „gültiger" Anker —
+    // der Button blieb dort hängen und wurde unsichtbar/unbedienbar.
+    for (const b of all) {
+      const meta = b.closest ? b.closest('ytd-watch-metadata') : null;
+      if (!meta || !isElementVisible(meta)) continue;
+      if (!b.children || b.children.length === 0) continue;
+      if (!isElementVisible(b)) continue;
+      return b;
+    }
+    // Fallback (Shorts /live / ältere Layouts): erste gefüllte, sichtbare Leiste.
+    // Eine Leiste, die NUR unseren Button enthält, zählt nicht als Anker —
+    // sonst bestätigt sich eine veraltete Platzierung selbst.
     for (const b of all) {
       if (!b.children || b.children.length === 0) continue;
+      if (b.children.length === 1 && b.children[0] === btn) continue;
       if (isElementVisible(b)) return b;
     }
     return null;
@@ -1518,7 +1571,10 @@
     try {
       if (e && e.preventDefault) e.preventDefault();
       if (e && e.stopPropagation) e.stopPropagation();
-      if (panel.style.display === 'block') { hidePanel(); return; }
+      // v1.0.95: Nur schließen, wenn das Panel wirklich sichtbar ist. Vorher
+      // schluckte ein Klick auf den Button ein off-screen/verdecktes Panel —
+      // der Nutzer erlebte „Button reagiert nicht".
+      if (panel.style.display === 'block' && isElementVisible(panel)) { hidePanel(); return; }
 
       const videoId = getVideoId();
       const title = getVideoTitle();
@@ -1554,13 +1610,27 @@
   }
 
   // Lädt die Formate über den ANDROID_VR-Innertube-Client und befüllt das Panel.
+  // v1.0.94: Sequenznummer + Abort — Antworten alter Anfragen dürfen ein neueres
+  // Video oder einen erneuten Versuch nicht mehr überschreiben.
   async function loadStreamsIntoPanel(videoId, title) {
+    const mySeq = ++loadSeq;
+    if (playerAbort) { try { playerAbort.abort(); } catch (e) { /* ignore */ } }
+    playerAbort = (typeof AbortController === 'function') ? new AbortController() : null;
+    const signal = playerAbort ? playerAbort.signal : null;
     try {
       if (!videoId) {
-        renderPanelMessage('Keine gültige Videoseite erkannt (kein ?v= Parameter).', true);
+        if (mySeq === loadSeq) renderPanelMessage('Keine gültige Videoseite erkannt (kein ?v= Parameter).', true, retryFromPanel);
         return;
       }
-      const pr = await fetchAndroidVrPlayer(videoId);
+      const pr = await fetchAndroidVrPlayer(videoId, signal);
+      if (mySeq !== loadSeq) {
+        dbg('[xYT] Veraltete Formatanfrage verworfen (seq ' + mySeq + ' ≠ ' + loadSeq + ')');
+        return;
+      }
+      if (videoId !== getVideoId()) {
+        dbg('[xYT] Formatanfrage gehört zu anderem Video (' + videoId + ') — verworfen.');
+        return;
+      }
       const streams = extractStreams(pr);
       if (streams.progressive.length === 0 && streams.videoOnly.length === 0 && streams.audioOnly.length === 0) {
         // v1.0.70: Livestream-Fall sauber abfangen.
@@ -1592,7 +1662,8 @@
       renderPanel(streams, videoId, freshTitle);
       positionPanel();
     } catch (err) {
-      renderPanelMessage('Formate konnten nicht geladen werden: ' + (err && err.message ? err.message : String(err)), true);
+      if (mySeq !== loadSeq) return; // veraltete Anfrage: Panel nicht mehr anfassen
+      renderPanelMessage('Formate konnten nicht geladen werden: ' + (err && err.message ? err.message : String(err)), true, retryFromPanel);
     }
   }
 
@@ -1618,7 +1689,18 @@
     refreshPanelRefs();
   }
 
-  function renderPanelMessage(msg, isError) {
+  // v1.0.94: „Erneut versuchen" — lädt die Formate für die AKTUELLE Video-ID neu.
+  function retryFromPanel() {
+    const id = getVideoId();
+    const t = getVideoTitle();
+    if (!id) { renderPanelMessage('Keine gültige Videoseite erkannt (kein ?v= Parameter).', true); return; }
+    dbg('[xYT] Retry: Formate erneut laden für ' + id);
+    renderPanelLoading(id, t);
+    positionPanel();
+    loadStreamsIntoPanel(id, t);
+  }
+
+  function renderPanelMessage(msg, isError, retryFn) {
     panel.replaceChildren();
     const close = document.createElement('button');
     close.className = 'xyt-dl-close';
@@ -1630,6 +1712,16 @@
     st.className = 'xyt-dl-status' + (isError ? ' err' : '');
     st.textContent = msg;
     panel.appendChild(st);
+    // v1.0.94: optionaler Retry-Knopf (nur bei wiederholbaren Ladefehlern).
+    if (typeof retryFn === 'function') {
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'xyt-dl-opt';
+      retry.style.marginTop = '10px';
+      retry.textContent = '↻ Erneut versuchen';
+      retry.addEventListener('click', retryFn);
+      panel.appendChild(retry);
+    }
     refreshPanelRefs();
   }
 
@@ -1897,6 +1989,10 @@
 
   function hidePanel() {
     if (panel) panel.style.display = 'none';
+    // v1.0.94: laufende Formatanfrage verwerfen und technisch abbrechen, damit
+    // eine späte Antwort nicht ein neues Video oder einen Retry überschreibt.
+    loadSeq++;
+    if (playerAbort) { try { playerAbort.abort(); } catch (e) { /* ignore */ } playerAbort = null; }
   }
 
   // -------------------------------------------------------------------------
@@ -1908,6 +2004,10 @@
       if (id !== boundVideoId) {
         boundVideoId = id;
         barWaitStart = Date.now(); // Wartezeit für DIESES Video neu starten
+        // v1.0.95: Button aus der alten Leiste lösen — sonst hängt er an einem
+        // veralteten/unsichtbaren Container und ist nicht mehr bedienbar.
+        if (btn && btn.parentElement) { try { btn.remove(); } catch (e) { /* ignore */ } }
+        btnVideoId = null;
         hidePanel();
         refresh();
       }
@@ -1935,6 +2035,10 @@
       if (id !== boundVideoId) {
         boundVideoId = id;
         barWaitStart = Date.now(); // Wartezeit für DIESES Video neu starten
+        // v1.0.95: Button aus der alten Leiste lösen — sonst hängt er an einem
+        // veralteten/unsichtbaren Container und ist nicht mehr bedienbar.
+        if (btn && btn.parentElement) { try { btn.remove(); } catch (e) { /* ignore */ } }
+        btnVideoId = null;
         hidePanel();
         refresh();
       }

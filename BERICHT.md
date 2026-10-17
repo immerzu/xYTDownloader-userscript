@@ -1298,3 +1298,33 @@ Per `page.evaluate` im Seiten-Kontext den identischen VISIONOS-Request nachgebau
 **Release (2026-10-17):**
 - **GitHub:** Commit `af781c0`, Tag `v1.0.93` + Release (2026-10-17T16:56:57Z) mit Asset `xyt-downloader-v1.0.93.user.js` (100.168 Bytes, sha256 `2eb63d5f6465076c34110b234055b8b97680de77b6a5846fe0ac02d7fb4469ef` — identisch mit dem lokalen Build).
 - **Greasy Fork:** Webhook-Übernahme 2026-10-17T16:56:04Z — GF-API bestätigt `version: 1.0.93`, `code_size: 98149` (LF-normalisiert). **Quellcode-Abgleich:** Install-Artefakt (98.313 B) minus der zwei von GF eingefügten `@downloadURL`/`@updateURL`-Zeilen, LF-normalisiert = Arbeitsdatei → **0 Abweichungen** (2020 Zeilen).
+
+## 60. v1.0.94 + v1.0.95 — Formatanfrage mit Zeitlimit; Button nach SPA-Wechsel wieder bedienbar
+
+**Stand:** 2026-10-17. v1.0.94 wurde **nie separat veröffentlicht** (Regression im Firefox-Test), v1.0.95 enthält beide Änderungssätze und ist die erste veröffentlichte Fassung danach.
+
+### v1.0.94 — hängende Formatanfragen (nie veröffentlicht)
+- `fetchAndroidVrPlayer()` hatte weder Zeitlimit noch Abbruch; bei ausbleibender Antwort blieb das Panel dauerhaft auf „Formate werden geladen …".
+- **Änderung:** `AbortController` + 15-s-Timeout (Request wird technisch abgebrochen), externes Abbruchsignal, Sequenznummer `loadSeq` gegen veraltete Antworten, Retry-Knopf im Panel (`retryFromPanel`), `hidePanel()` invalidiert und bricht ab.
+
+### v1.0.95 — Regressionen aus v1.0.94 (veröffentlicht)
+- **Fehler (Nutzer, Firefox):** Nach Video-Wechsel reagierten die Download-Buttons nicht mehr; der Button verlor erneut seine Position.
+- **Ursache 1 (Position):** `getBar()` nahm die erste gefüllte, **sichtbare** `#top-level-buttons-computed`. Beim SPA-Wechsel bleiben alte Watch-Container samt Leiste im DOM; deren Leiste hat Größe > 0 und galt als gültiger Anker — der Button blieb dort hängen und wurde 0×0/unsichtbar (reproduziert: `btnVisible:false` bei `inGoodBar:true`).
+- **Ursache 2 (Klick):** Ein unsichtbarer Button ist nicht anklickbar; zusätzlich schloss `onBtnClick()` bei `display:block` auch ein **nicht sichtbares** Panel — der erste Klick wirkte folgenlos.
+- **Änderung (4 Stellen):** `getBar()` bevorzugt die Leiste in einer **sichtbaren `ytd-watch-metadata`** (Fallback: erste gefüllte sichtbare, aber keine, die nur den eigenen Button enthält); bei Video-Wechsel wird der Button aus dem DOM gelöst (`btn.remove()`, `btnVideoId = null`) — keine Bindung an alte Leisten; Panel-Toggle nur bei **wirklich sichtbarem** Panel.
+- **Unverändert:** Timeout, Retry, Stale-Schutz, Download-/Merge-Code — der Diff v1.0.94→v1.0.95 enthält ausschließlich diese vier Stellen plus Versionszeilen.
+
+### Prüfungen (Chromium/Playwright, echte YouTube-SPA)
+| Test | Ergebnis |
+|---|---|
+| Video A | Button in Leiste, 6 Qualitäten |
+| A → B (Klick) | Button sichtbar, in Leiste, kein Overlay, 1 Button; Panel mit 4 Qualitäten |
+| B → C → weiterer Wechsel | Button sichtbar, in Leiste, 1 Button; Panel mit 5 Qualitäten |
+| Download auf C (360p) | Klick startet korrekt, Transfer endet mit **403** (aktiver VPN, bekannte Falle) — Abbruch mit Meldung + Retry |
+| Timeout / Retry / Stale (v1.0.94) | 15-s-Abbruch mit Meldung; Retry lädt neu; späte Antwort ändert das Panel nicht |
+
+**Nutzer-Test (Firefox):** v1.0.95 erfolgreich — Freigabe zur Veröffentlichung (2026-10-17).
+
+**Build:** `node --check` OK; `Ausgabe\xyt-downloader-v1.0.95.user.js`, 105.876 B, SHA256 `be487e500c7ec2e5d240eae78d17b0d5a43fdddf1b83f41965fa48af4b5f18d1`, `fc /b` identisch zur Arbeitsdatei.
+
+**Release:** folgt nach Push und GF-Messung.

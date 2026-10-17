@@ -1,4 +1,4 @@
-# xYTDownloader — FACT SHEET (Stand: v1.0.93, 2026-10-17)
+# xYTDownloader — FACT SHEET (Stand: v1.0.95, 2026-10-17)
 
 ## Kerndaten
 - **Projekt-Root:** `F:\001_Coding_Projekte\xYTDownloader\`
@@ -9,7 +9,7 @@
 - **Webhook/Sync:** Push → Greasy Fork aktualisiert automatisch (Sync-Quelle `https://raw.githubusercontent.com/immerzu/xYTDownloader-userscript/main/xyt-downloader.user.js`; Payload `/users/1629833-immerzu/webhook`, Event push). **Verifiziert:** v1.0.76 (+19 s), v1.0.89 (14:32:59Z), **v1.0.91 (2026-09-19T07:42:48Z, ~20 s nach Push `bc997e3`)**. **Aber nicht blind warten — messen** (`Invoke-RestMethod https://greasyfork.org/scripts/589972.json` → `version`, `code_updated_at`); bei Verzug Admin-Trigger (`gf-admin-sync.mjs`; belegt 2026-09-14: ~4 min Verzug). Sync übernimmt Roh-Code (validiert nicht); harte Grenze bleibt `@description` ≤ 500 Zeichen.
 - **Install-Link:** https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js
 
-## Aktueller Stand (v1.0.93)
+## Aktueller Stand (v1.0.95)
 - **v1.0.80 (2026-09-01):** Fix "LOGIN_REQUIRED — Sign in to confirm you're not a bot" — `fetchAndroidVrPlayer` (Player-Request) nutzt jetzt Seiten-`fetch` statt `GM_xmlhttpRequest` (Seiten-Kontext trägt die Browser-Session, umgeht YouTubes Bot-Prüfung; verifiziert: status OK, 27 adaptiveFormats). GF live + GitHub Release v1.0.80.
 - **v1.0.88 (2026-09-03):** Aufräumarbeit/Rollback auf den einfachen VISIONOS-Stand (v1.0.81-Basis) — die unnötigen Web-Player-Umbau-Experimente v1.0.85–87 (`getPlayerApiResponse`/`wholeFile`) wurden verworfen (Auslöser war ein aktiver VPN, nicht der Code; vgl. Erkenntnisse 0/1b).
 - **v1.0.89 (2026-09-05):** `@description:de` + `@name:de` entfernt — GF-Kurzbeschreibung zeigt einheitlich DE/EN/RU statt nur DE (GF live v1.0.89, Webhook-Übernahme 14:32:59Z). Danach nachgezogen: `MY_VERSION`-Abgleich 1.0.88 → 1.0.89, erster v1.0.89-Build + Release-Asset (BERICHT §54/§55).
@@ -17,6 +17,8 @@
 - **v1.0.91 (2026-09-19, GF live + GitHub-Release, im Firefox verifiziert):** **Firefox-Fix** „leere Chunk-Antwort (Status 0)" beim DASH-Merge — `fetchRangeChunk` setzt keine Custom-Header mehr (Ursache: `User-Agent`-Header → CORS-Preflight in Firefox, s. Erkenntnis 1e); zusätzlich wird die fetch-Fehlerursache geloggt und an die Panel-Meldung angehängt (BERICHT §57).
 - **v1.0.92 (2026-10-17, im Firefox verifiziert):** **Button-Positionsfix** — der ⬇-Button blieb sporadisch im Player. Ursache: YouTube hat **mehrere** Elemente mit `id="top-level-buttons-computed"` (3 beim Laden, 29 nach SPA-Navigation); `querySelector` nahm die erste, oft leere/0×0 → Player-Fallback. Zusätzlich: `anchorLocked` verhinderte das Zurückholen, `PAGE_START` ließ die 4-s-Wartezeit nach dem ersten Video ablaufen. Neu: `getBar()` (nur gefüllte+sichtbare Leiste), `barWaitStart` je Video, `insertIntoBar()` (vor „Speichern"), Observer/Intervall ziehen Overlay-Button hoch. **Erkenntnis 1f** (BERICHT §58). GF live v1.0.92 (Übernahme 2026-10-17T16:30:14Z), GitHub-Release + Asset `xyt-downloader-v1.0.92.user.js`.
 - **v1.0.93 (2026-10-17, im Browser verifiziert):** **Download-Zuverlässigkeit** — (B1) Merge-Fehler speichert jetzt Video **und** Audio getrennt (`.mp4` + `.m4a`/`.webm`), vorher ging die geladene Audiospur verloren; (B2) `retryChunk`/`isTransientStatus` wiederholen Status 0/429/5xx bis zu 4× (1/2/4/8 s, bei 0/429 mit frischer URL) im Merge-Pfad, progressive Downloads bis 3× vor dem Fallback; (B3) GM-Gate und `@grant GM_xmlhttpRequest` entfernt (nativer fetch überall). BERICHT §59. GF live v1.0.93 (Übernahme 2026-10-17T16:56:04Z), GitHub-Release + Asset `xyt-downloader-v1.0.93.user.js`.
+- **v1.0.94 (2026-10-17, NICHT veröffentlicht):** Formatanfrage mit **15-s-Timeout** (`AbortController`, externes Abbruchsignal), Sequenz `loadSeq` gegen veraltete Antworten, Retry-Knopf im Panel. Im Firefox-Test zwei Regressionen → durch v1.0.95 ersetzt.
+- **v1.0.95 (2026-10-17, im Firefox verifiziert):** **Regressionen aus v1.0.94 behoben** — `getBar()` bevorzugt die Leiste in der sichtbaren `ytd-watch-metadata` (alte Watch-Container beim SPA-Wechsel waren sonst „gültiger" Anker → Button unsichtbar/unbedienbar); Button wird bei Video-Wechsel aus dem DOM gelöst; Panel-Toggle nur bei sichtbarem Panel. Timeout/Retry/Stale bleiben. BERICHT §60.
 - **Download-Client:** VISIONOS statt ANDROID_VR (Name 1.02, `RealityDevice17,1`) — ANDROID_VR lieferte 403/UNPLAYABLE ohne POT-Token (`fetchAndroidVrPlayer()`, Z. 849; **kein Timeout** — s. Offene Punkte)
 - **Download-Fetches:** `&range=`-URL-Parameter statt Range-Header, init-Segment (ftyp+moov) separat laden. **Seit v1.0.91 ohne Custom-Header** (Referer/UA/Accept-Encoding entfernt — der UA-Header löste in Firefox einen CORS-Preflight aus, Erkenntnis 1e)
 - **Container:** MP4-Präferenz in `codecRank()` (video/mp4 vor webm) — WebM/VP9 itag 313/271 ist EBML und nicht mit `mergeFmp4` muxbar
@@ -79,6 +81,8 @@
 - v1.0.91: Firefox-Fix — keine Custom-Header im Chunk-Fetch (UA-Header löste CORS-Preflight aus → Status 0)
 - v1.0.92: Button-Positionsfix — `getBar()` wählt die sichtbare Leiste (ID-Duplikate!), `barWaitStart` je Video, `insertIntoBar()` vor „Speichern"
 - v1.0.93: Download-Zuverlässigkeit — Merge-Fehler speichert Audio mit, Netz-Retry (4×/3×), GM-Gate entfernt
+- v1.0.94: Formatanfrage-Timeout (15 s) + Retry + Stale-Schutz — nicht veröffentlicht
+- v1.0.95: Regressionen aus v1.0.94 behoben (Leisten-Anker in sichtbarer `ytd-watch-metadata`, Button beim Video-Wechsel lösen, Panel-Toggle nur bei Sichtbarkeit)
 - v1.0.55–67: **Alles Experimente — NICHT verwenden**
 
 ## Build-Regeln (bindend)
