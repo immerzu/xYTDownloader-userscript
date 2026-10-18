@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.100
-// @description One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging.
-// @description:de YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging.
-// @description:ru Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
+// @version      1.1.15
+// @description One-click YouTube downloader for /watch, /shorts and /live: up to 4K with audio, DASH merge, live progress, cancel and retry. No third-party download services; direct VISIONOS client.
+// @description:de YouTube-Downloader für /watch, /shorts und /live: bis 4K mit Ton, DASH-Merge, Live-Fortschritt, Abbrechen und erneut versuchen. Keine Download-Dienste von Drittanbietern, direkter VISIONOS-Client.
+// @description:ru Скачивание YouTube для /watch, /shorts и /live: до 4K со звуком, объединение DASH, прогресс в реальном времени, отмена и повтор. Без сторонних сервисов загрузки, прямой клиент VISIONOS.
 // @author       Ede
 // @match        *://www.youtube.com/*
 // @match        *://youtube.com/*
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.100';
+  const MY_VERSION = '1.1.15';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -255,13 +255,26 @@
   }
 
   // Schließt das Panel nach kurzer Verzögerung automatisch (nach erfolgreichem Download).
+  // v1.1.04: EINE zentrale Verzögerung (PANEL_AUTOCLOSE_MS = 1000 ms) statt mehrerer
+  // Zeitwerte, plus Token gegen veraltete Timer: Ein Timer darf nur das Panel
+  // schließen, das zu seinem Download gehörte — nicht ein inzwischen neu
+  // geöffnetes Panel oder einen neu gestarteten Download. invalidatePanelClose()
+  // macht alle laufenden Schließ-Timer ungültig.
+  const PANEL_AUTOCLOSE_MS = 1000; // v1.1.04: 1 s statt 500 ms
+  let panelCloseToken = 0;
+  function invalidatePanelClose() {
+    panelCloseToken++;
+  }
   function autoClosePanelAfter(delayMs) {
+    const myToken = ++panelCloseToken;
+    const delay = (typeof delayMs === 'number' && delayMs >= 0) ? delayMs : PANEL_AUTOCLOSE_MS;
     setTimeout(function () {
+      if (myToken !== panelCloseToken) return; // veralteter Timer — ignorieren
       try {
         const p = document.getElementById('xyt-dl-panel');
         if (p) p.style.display = 'none';
       } catch (e) { /* ignore */ }
-    }, delayMs);
+    }, delay);
   }
 
   // Statusanzeige im Panel aktualisieren (gemeinsamer Helfer)
@@ -357,7 +370,13 @@
 
   // v1.0.98: bricht den laufenden Download ab. Kein Blob, keine Datei.
   function cancelDownload() {
-    if (!running) return;
+    if (!running) {
+      // v1.1.13: Kein Download aktiv (z. B. Größenwarnung, Fehler, fertiger
+      // Lauf) — „Abbrechen" muss trotzdem reagieren und das Panel schließen.
+      dbg('[xYT] CANCEL: kein laufender Download — Panel wird geschlossen');
+      hidePanel();
+      return;
+    }
     dlCancelled = true;
     dbg('[xYT] CANCEL: Nutzer hat abgebrochen (Phase ' + dlPhase + ')');
     if (dlAbort) { try { dlAbort.abort(); } catch (e) { /* ignore */ } }
@@ -372,9 +391,19 @@
     a.download = filename;
     document.body.appendChild(a);
     a.click();
-    setTimeout(function () {
-      try { URL.revokeObjectURL(objectUrl); a.remove(); } catch (e) { /* ignore */ }
-    }, 4000);
+    // v1.1.15: Die Object-URL darf bei GROSSEN Dateien NICHT nach 4 s freigegeben
+    // werden. Chrome kopiert den Blob minutenlang in den Downloadordner; ein
+    // frühes revokeObjectURL bricht den Transfer ab und hinterlässt eine
+    // .crdownload-Datei. Kleine Downloads (<= 100 MB) werden weiter aufgeräumt.
+    const big = (typeof blob.size === 'number' && blob.size > 100 * 1024 * 1024);
+    if (big) {
+      setTimeout(function () { try { a.remove(); } catch (e) { /* ignore */ } }, 4000);
+      dbg('[xYT] saveBlob: große Datei (' + blob.size + ' B) — Object-URL bleibt bis zum Seitenwechsel gültig.');
+    } else {
+      setTimeout(function () {
+        try { URL.revokeObjectURL(objectUrl); a.remove(); } catch (e) { /* ignore */ }
+      }, 4000);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -386,6 +415,14 @@
   // Bytes selbst — der Fortschritt wächst damit garantiert inkrementell.
   // -------------------------------------------------------------------------
   const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB je Chunk
+  // v1.1.12: Chromium kann keinen ArrayBuffer über ~2 GB allokieren
+  // („Array buffer allocation failed" nach dem KOMPLETTEN Download, z. B. bei
+  // 2160p mit 2,85 GB). Deshalb vor dem Start prüfen und klar melden, statt
+  // 2,85 GB zu laden und dann zu scheitern. 1,9 GB lässt Sicherheitsabstand.
+  const MAX_BUFFER_BYTES = 1900 * 1024 * 1024;
+  function fmtGB(bytes) {
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
 
   // v1.0.72: Range-Chunk per native window.fetch geladen. Die Range wird als
   // `&range=START-END` DIREKT in die Stream-URL geschrieben — so lädt der
@@ -427,6 +464,10 @@
   }
 
   function downloadUrl(url, filename, expectedSize, signal) {
+    // v1.1.05: liefert ein Promise. Vorher wurde der Download nur GESTARTET und
+    // runDownload setzte `running` sofort zurück — ein Abbruch/Neustart konnte
+    // dadurch parallel zu einem laufenden Transfer erfolgen.
+    return new Promise(function (doneDownload) {
     let knownTotal = Number(expectedSize) || 0;   // v1.0.38: let, damit die Probe die Größe nachtragen kann
     // B3-Fix (2026-10-17): KEIN GM_xmlhttpRequest-Gate mehr. Der Download läuft
     // vollständig über natives fetch (fetchRangeChunk); die API wird nirgends
@@ -446,7 +487,7 @@
     }
 
     // v1.0.38: Bei unbekannter Größe (progressive Formate liefern in der
-    // ANDROID_VR-Antwort kein contentLength) einmalig die Dateigröße per
+    // VISIONOS-Antwort kein contentLength) einmalig die Dateigröße per
     // Range-Probe (bytes=0-0) ermitteln — wie in v1.0.12–v1.0.15. Der
     // Content-Range-Header liefert die Gesamtgröße → Balken 0–100 % wie beim
     // DASH/Merge-Pfad. Schlägt die Probe fehl, läuft der alte Pfad weiter
@@ -456,7 +497,13 @@
       probed = true;
       // v1.0.71: native fetch (konsistent mit den Chunks; kein 403 in der Sandbox).
       fetchRangeChunk(url, 0, 0, signal).then(function (r) {
-        if (r.aborted) return; // v1.0.98: Nutzer-Abbruch
+        if (r.aborted) {
+          // v1.1.08: Abbruch waehrend der Groessen-Probe darf das Promise NICHT
+          // offen lassen (vorher: `return` ohne doneDownload).
+          setStatusText('Download abgebrochen — keine Datei gespeichert.');
+          doneDownload({ ok: false, aborted: true });
+          return;
+        }
         try {
           const cr = String(r.headers && r.headers.get && (r.headers.get('content-range') || '') || '');
           const m = cr.match(/bytes\s+0-0\/(\d+)/i);
@@ -503,14 +550,59 @@
           throw new Error('leere Chunk-Antwort (Status ' + r.status + ')');
         }
         const buf = r.bytes;
+        // v1.1.06: Bei 206 muss der gelieferte Bytebereich EXAKT zur angefragten
+        // Range passen. Ein zu kurzer/falscher Chunk würde sonst als vollständig
+        // gelten und die Datei stillschweigend verstümmeln.
+        if (r.status === 206) {
+          // v1.1.07: Content-Range vollständig prüfen — Start, Ende und
+          // Gesamtgröße. Nur so kann ein verschobener/falscher Bereich nicht
+          // unbemerkt in die Datei wandern.
+          let crRaw = '';
+          try { crRaw = r.headers && r.headers.get ? String(r.headers.get('content-range') || '') : ''; } catch (e) { /* ignore */ }
+          const mcr = crRaw.match(/bytes\s+(\d+)-(\d+)\/(\d+|\*)/i);
+          if (!mcr) {
+            throw new Error('unvollständiger Chunk: 206 ohne gültigen Content-Range-Header ("' + crRaw.slice(0, 40) + '")');
+          }
+          const crStart = Number(mcr[1]);
+          const crEnd = Number(mcr[2]);
+          const crTotal = (mcr[3] === '*') ? null : Number(mcr[3]);
+          const problems = [];
+          // Erwartete Länge: bei bekannter Gesamtgröße exakt die Range, sonst
+          // höchstens die Range (der letzte Chunk darf kürzer sein).
+          if (knownTotal > 0) {
+            if (buf.byteLength !== (end - start + 1)) problems.push('Länge ' + buf.byteLength + ' statt ' + (end - start + 1));
+          } else if (buf.byteLength <= 0 || buf.byteLength > (end - start + 1)) {
+            problems.push('Länge ' + buf.byteLength + ' außerhalb 1..' + (end - start + 1));
+          }
+          if (crStart !== start) problems.push('Start ' + crStart + ' statt ' + start);
+          if (crEnd !== (start + buf.byteLength - 1)) problems.push('Ende ' + crEnd + ' statt ' + (start + buf.byteLength - 1));
+          if (crTotal !== null && knownTotal > 0 && crTotal !== knownTotal) problems.push('Gesamtgröße ' + crTotal + ' statt ' + knownTotal);
+          if (problems.length) {
+            throw new Error('unvollständiger Chunk: ' + problems.join('; '));
+          }
+        }
         const prev = received;
         chunks.push(buf);
         received += buf.byteLength;
         // DIAGNOSE: Was kam real zurück? Status 206 = Range ok, 200 = kompletter Body!
         dbg('[xYT] DL-CHUNK-OK: Status=' + r.status + ' | angefordert=' + (end - start + 1) + ' B | erhalten=' + buf.byteLength + ' B | received-gesamt=' + received);
-        if (r.status === 200 && knownTotal > 0 && buf.byteLength >= knownTotal) {
-          // Server hat Range ignoriert und die KOMPLETTE Datei geliefert → fertig.
-          console.warn('[xYT] DL-CHUNK-WARNUNG: Status 200 (kompletter Body) statt 206 — Range ignoriert.');
+        // v1.1.05: Status 200 bedeutet, dass der Server die Range-Anfrage
+        // IGNORIERT und den KOMPLETTEN Body geschickt hat. Das darf nur
+        // akzeptiert werden, wenn wir am Dateianfang stehen und die Größe
+        // stimmt — sonst würden Daten doppelt angehängt und stillschweigend als
+        // erfolgreicher Download gespeichert. Lieber laut scheitern.
+        if (r.status === 200) {
+          const sizeOk = (knownTotal > 0) ? (buf.byteLength === knownTotal) : true;
+          if (start !== 0 || !sizeOk) {
+            console.warn('[xYT] DL-ABBRUCH: HTTP 200 trotz Range (start=' + start + ', erhalten=' + buf.byteLength + ' B, knownTotal=' + knownTotal + ') — Daten verworfen, kein Doppel-Speichern.');
+            chunks.pop();
+            received = prev;
+            setStatusText('Download fehlgeschlagen: Server ignorierte die Range-Anfrage (HTTP 200) — Daten verworfen.');
+            doneDownload({ ok: false, error: 'HTTP 200 statt 206 (Range ignoriert)' });
+            return;
+          }
+          if (knownTotal === 0) knownTotal = buf.byteLength;
+          console.warn('[xYT] DL-CHUNK-WARNUNG: Status 200 (kompletter Body statt 206) — Datei vollständig geliefert, Range ignoriert.');
           finishDownload();
           return;
         }
@@ -527,6 +619,7 @@
         if (dlCancelled || (e3 && e3.aborted) || /Abgebrochen/.test(String((e3 && e3.message) || e3))) {
           dbg('[xYT] DL-CANCEL: abgebrochen bei Byte ' + received);
           setStatusText('Download abgebrochen — keine Datei gespeichert.');
+          doneDownload({ ok: false, aborted: true });
           return;
         }
         // B2-Fix (2026-10-17): Temporäre Fehler (Netzabbruch/Status 0, 5xx, 429)
@@ -534,36 +627,70 @@
         // dabei NICHT gepusht (received/chunks unverändert) → keine doppelten Daten,
         // der Balken bleibt stehen statt zu springen.
         const msg = String((e3 && e3.message) || e3);
-        const permanent = /Status (403|404|416)\b/.test(msg);
+        // v1.1.06: Ein unvollständiger/falscher Bytebereich ist ein DATENFEHLER,
+        // kein Netzwerk-Wackler — er darf nicht in den GM/window.open-Fallback
+        // laufen (der würde eine andere, ungeprüfte Datei laden).
+        const permanent = /Status (403|404|416)\b/.test(msg) || /unvollständiger Chunk/.test(msg);
         if (!permanent && netTries < MAX_NET_TRIES) {
           netTries++;
           const delay = Math.min(8000, 1000 * Math.pow(2, netTries - 1));
           dbg('[xYT] DL-TRANSIENT: ' + msg + ' — Versuch ' + netTries + '/' + MAX_NET_TRIES + ' in ' + delay + ' ms');
           setStatusText('Netzwerkfehler — neuer Versuch ' + netTries + '/' + MAX_NET_TRIES + ' …');
-          setTimeout(function () { nextChunk(start); }, delay);
+          setTimeout(function () {
+            // v1.1.06: Ein ausstehender Retry darf nach einem Abbruch keinen
+            // verspäteten Download mehr starten.
+            if (dlCancelled) {
+              dbg('[xYT] DL-CANCEL: ausstehender Retry verworfen');
+              doneDownload({ ok: false, aborted: true });
+              return;
+            }
+            nextChunk(start);
+          }, delay);
+          return;
+        }
+        // v1.1.06: Ein unvollständiger Bytebereich ist ein Datenfehler des
+        // Servers. Ein Browser-Fallback würde eine ANDERE, ungeprüfte Datei
+        // laden — deshalb hier bewusst kein Fallback, sondern klarer Fehler.
+        if (/unvollständiger Chunk/.test(msg)) {
+          console.warn('[xYT] Chunk-Datenfehler (' + msg + ') — kein Browser-Fallback.');
+          setStatusText('Download fehlgeschlagen: ' + msg + ' — keine Datei gespeichert.');
+          doneDownload({ ok: false, error: msg });
           return;
         }
         console.warn('[xYT] Chunk-Fehler (' + msg + '), Fallback GM_download:', e3);
         setStatusText('Download fehlgeschlagen (' + msg + ') — versuche Browser-Download …');
-        fallbackDownload(url, filename);
+        fallbackDownload(url, filename, function (resFb) { doneDownload(resFb); });
       });
     }
 
     function finishDownload() {
       try {
+        // v1.1.12: Blob-Grenze früh prüfen (gleiche Grenze wie beim Merge).
+        let sum = 0;
+        for (const c of chunks) sum += c.byteLength;
+        if (sum > MAX_BUFFER_BYTES) {
+          setStatusText('Zu groß für den Browser: ' + fmtGB(sum) + ' (Grenze ' + fmtGB(MAX_BUFFER_BYTES) + ') — bitte eine niedrigere Qualität wählen.');
+          doneDownload({ ok: false, error: 'Datei zu groß für den Browser (' + fmtGB(sum) + ')' });
+          return;
+        }
         const blob = new Blob(chunks, { type: 'application/octet-stream' });
         setBarProgress(100);
-        setStatusText('Download abgeschlossen: ' + filename);
+        // v1.1.05: Daten sind geladen, das Speichern ist ANGESTOSSEN — der
+        // Browser bestätigt es nicht. Deshalb keine „abgeschlossen"-Behauptung.
+        setStatusText('Daten vollständig geladen (' + formatBytes(blob.size) + ') — Speichern angestoßen: ' + filename);
         dbg('[xYT] DL-FERTIG: byteLength=' + blob.size + ' expectedSize=' + knownTotal + ' | Chunks=' + chunks.length);
         if (knownTotal > 0) {
           const dev = Math.abs(blob.size - knownTotal) / knownTotal;
           dbg('[xYT] Größencheck: erwartet=' + knownTotal + ' B, tatsächlich=' + blob.size + ' B, Abweichung=' + (dev * 100).toFixed(2) + ' %');
         }
         saveBlob(blob, filename);
-        autoClosePanelAfter(2500);
+        doneDownload({ ok: true, bytes: blob.size, confirmed: false });
+        autoClosePanelAfter();
       } catch (e4) {
         console.warn('[xYT] Zusammenfügen fehlgeschlagen, Fallback GM_download:', e4);
-        fallbackDownload(url, filename);
+        // v1.1.08: vorher ohne Callback → das Promise blieb bei einem Fehler im
+        // Speicher-/Fallback-Pfad dauerhaft offen.
+        fallbackDownload(url, filename, function (resFb2) { doneDownload(resFb2); });
       }
     }
 
@@ -573,12 +700,15 @@
     } else {
       probeSize();
     }
-    return true;
+    }); // new Promise (v1.1.05)
   }
 
 
-  // Fallback: GM_download (falls Blob nicht klappt), zuletzt window.open
-  function fallbackDownload(url, filename) {
+  // Fallback: GM_download (falls Blob nicht klappt), zuletzt window.open.
+  // v1.1.05: `onDone` meldet den TATSÄCHLICHEN Ausgang an downloadUrl zurück —
+  // ein angestoßenes window.open gilt ausdrücklich NICHT als bestätigter Abschluss.
+  function fallbackDownload(url, filename, onDone) {
+    const done = (typeof onDone === 'function') ? onDone : function () {};
     if (typeof GM_download === 'function') {
       try {
         GM_download({
@@ -587,11 +717,15 @@
           saveAs: false,
           onload: function () {
             setBarProgress(100);
-            setStatusText('Download abgeschlossen: ' + filename);
-            autoClosePanelAfter(2500);
+            // GM_download bestätigt nur, dass der Downloadvorgang endete —
+            // nicht, dass die Datei im Dateisystem liegt.
+            setStatusText('Browser-Download abgeschlossen (nicht bestätigt): ' + filename);
+            done({ ok: true, bytes: 0, confirmed: false, fallback: true });
+            autoClosePanelAfter();
           },
           onerror: function (err) {
             setStatusText('Download fehlgeschlagen: ' + ((err && err.error) || 'unbekannter Fehler'));
+            done({ ok: false, error: String((err && err.error) || 'GM_download-Fehler') });
           }
         });
         return;
@@ -600,9 +734,15 @@
       }
     }
     try {
+      // v1.1.03: window.open liefert KEINE Bestätigung, dass die Datei wirklich
+      // gespeichert wurde (Popup-Blocker, abgebrochener Tab). Deshalb hier
+      // bewusst KEIN Auto-Schließen — das Panel bleibt mit der Meldung stehen.
       window.open(url);
-      autoClosePanelAfter(2500);
-    } catch (e) { /* ignore */ }
+      setStatusText('Browser-Download angestoßen (unbestätigt) — Datei im Download-Ordner prüfen.');
+      done({ ok: false, error: 'window.open ohne Bestätigung', unconfirmed: true });
+    } catch (e) {
+      done({ ok: false, error: 'window.open fehlgeschlagen' });
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -692,7 +832,7 @@
           received += r.bytes.byteLength;
           dbg('[xYT] INIT-SEGMENT geladen: ' + r.bytes.byteLength + ' B (Bytes ' + start + '-' + end + ')');
           nextChunk(mediaStartOffset());
-        });
+        }).catch(reject); // v1.1.08: Fehler darf das Promise nicht offen lassen
       }
 
       function refreshUrl() {
@@ -753,13 +893,57 @@
             throw new Error('leere Chunk-Antwort (Status ' + r.status + ')' + why);
           }
           const buf = r.bytes;
+          // v1.1.08: Der DASH-Pfad bekommt dieselbe 206-Integritätsprüfung wie
+          // der progressive Pfad — sonst könnten verschobene oder zu kurze
+          // Bereiche unbemerkt in die gemergte Datei wandern.
+          if (r.status === 206) {
+            let crRaw = '';
+            try { crRaw = r.headers && r.headers.get ? String(r.headers.get('content-range') || '') : ''; } catch (e) { /* ignore */ }
+            const mcr = crRaw.match(/bytes\s+(\d+)-(\d+)\/(\d+|\*)/i);
+            if (!mcr) throw new Error('unvollständiger Chunk: 206 ohne gültigen Content-Range-Header');
+            const crStart = Number(mcr[1]);
+            const crEnd = Number(mcr[2]);
+            const crTotal = (mcr[3] === '*') ? null : Number(mcr[3]);
+            const problems = [];
+            if (knownTotal > 0) {
+              if (buf.byteLength !== (end - start + 1)) problems.push('Länge ' + buf.byteLength + ' statt ' + (end - start + 1));
+            } else if (buf.byteLength <= 0 || buf.byteLength > (end - start + 1)) {
+              problems.push('Länge ' + buf.byteLength + ' außerhalb 1..' + (end - start + 1));
+            }
+            if (crStart !== start) problems.push('Start ' + crStart + ' statt ' + start);
+            if (crEnd !== (start + buf.byteLength - 1)) problems.push('Ende ' + crEnd + ' statt ' + (start + buf.byteLength - 1));
+            if (crTotal !== null && knownTotal > 0 && crTotal !== knownTotal) problems.push('Gesamtgröße ' + crTotal + ' statt ' + knownTotal);
+            if (problems.length) throw new Error('unvollständiger Chunk: ' + problems.join('; '));
+          }
+          if (r.status === 200) {
+            // v1.1.10: HTTP 200 hat ZWEI verschiedene Bedeutungen — beide sind
+            // kein Fehler und dürfen nicht verworfen werden:
+            // (a) Body = GESAMTE Datei (Range ignoriert, z. B. Shorts/AV1) →
+            //     init-Segment verwerfen (Kopf steckt im Body), fertig.
+            // (b) Body = genau die angeforderte Chunk-Länge, aber Status 200
+            //     statt 206 (YouTube liefert das bei manchen Chunks) → die
+            //     Range wurde korrekt angewendet. Normal weiter wie bei 206.
+            const expectedLen = end - start + 1;
+            const complete = (knownTotal > 0) && (buf.byteLength === knownTotal);
+            const rangeShaped = (buf.byteLength === expectedLen);
+            if (complete) {
+              console.warn('[xYT] DASH-200: komplette Datei statt Range (start=' + start + ') — init-Segment wird verworfen.');
+              initBytes.length = 0;
+              chunks.length = 0;
+              chunks.push(buf);
+              received = buf.byteLength;
+              if (onProgress) onProgress(received, knownTotal);
+              finishOk();
+              return;
+            }
+            if (!rangeShaped) {
+              throw new Error('unvollständiger Chunk: HTTP 200 mit unerwarteter Länge (' + buf.byteLength + ' B statt ' + expectedLen + ' B, knownTotal ' + knownTotal + ')');
+            }
+            dbg('[xYT] DASH-200: Status 200, aber exakt angeforderte Länge (' + buf.byteLength + ' B) — behandle wie 206.');
+          }
           const prev = received;
           chunks.push(buf);
           received += buf.byteLength;
-          if (r.status === 200 && knownTotal > 0 && buf.byteLength >= knownTotal) {
-            finishOk();
-            return;
-          }
           if (onProgress) onProgress(received, knownTotal);
           if (knownTotal > 0) {
             nextChunk(prev + buf.byteLength);
@@ -773,14 +957,25 @@
 
       function finishOk() {
         try {
-          // init-Segment (ftyp+moov) zuerst, dann die Mediendaten
-          const parts = initBytes.slice();
-          for (const c of chunks) parts.push(c);
-          const total = parts.reduce(function (s, c) { return s + c.byteLength; }, 0);
+          // v1.1.11: Keine zusätzliche `parts`-Kopie des Arrays mehr — die
+          // Chunk-Referenzen werden zweimal direkt durchlaufen (Summe, dann
+          // Füllen). Das Ziel-Uint8Array bleibt die einzige große Kopie.
+          let total = 0;
+          for (const c of initBytes) total += c.byteLength;
+          for (const c of chunks) total += c.byteLength;
+          // v1.1.12: ArrayBuffer-Limit prüfen, bevor allokiert wird.
+          if (total > MAX_BUFFER_BYTES) {
+            reject(new Error('Datei zu groß für den Browser: ' + fmtGB(total) + ' (Grenze ' + fmtGB(MAX_BUFFER_BYTES) + ') — bitte eine niedrigere Qualität wählen.'));
+            return;
+          }
           const out = new Uint8Array(total);
           let off = 0;
-          for (const c of parts) {
-            out.set(new Uint8Array(c), off);
+          for (const c of initBytes) {
+            out.set(c instanceof Uint8Array ? c : new Uint8Array(c), off);
+            off += c.byteLength;
+          }
+          for (const c of chunks) {
+            out.set(c instanceof Uint8Array ? c : new Uint8Array(c), off);
             off += c.byteLength;
           }
           resolve(out);
@@ -905,13 +1100,243 @@
     moov[4] = 109; moov[5] = 111; moov[6] = 111; moov[7] = 118; // 'moov'
     moov.set(moovContent, 8);
 
-    // Segmente: alles nach moov, sidx raus
+    // Segmente: alles nach moov, sidx raus.
+    // v1.1.11: Video-Segmente als subarray-VIEWS statt Kopien (werden nicht
+    // mutiert) — spart bei großen Dateien eine vollständige Pufferkopie.
+    // Audio-Segmente bleiben Kopien, weil patchTfhdInSegment sie in-place
+    // verändert und die Eingabe unangetastet bleiben muss.
+    // v1.1.14: `>=` statt `>` — eine Box, die GENAU bei moov.end beginnt, ist
+    // bereits ein Medien-Segment (moof). Mit `>` fehlte das erste moof bei
+    // Streams OHNE sidx; die Datei begann dann mit einem mdat ohne moof
+    // (defekt). Mit sidx fiel es nicht auf, weil das sidx bei moov.end liegt
+    // und ohnehin gefiltert wird.
     const vSegs = [], aSegs = [];
-    for (const box of vBoxes) if (box.start > vMoov.end && box.type !== 'sidx') vSegs.push(videoU8.slice(box.start, box.end));
-    for (const box of aBoxes) if (box.start > aMoov.end && box.type !== 'sidx') aSegs.push(audioU8.slice(box.start, box.end));
+    for (const box of vBoxes) if (box.start >= vMoov.end && box.type !== 'sidx') vSegs.push(videoU8.subarray(box.start, box.end));
+    for (const box of aBoxes) if (box.start >= aMoov.end && box.type !== 'sidx') aSegs.push(audioU8.slice(box.start, box.end));
     for (const seg of aSegs) patchTfhdInSegment(seg, 2);
 
-    return concat([videoU8.slice(vFtyp.start, vFtyp.end), moov, ...vSegs, ...aSegs]);
+    // v1.1.13: Rückgabe als BLOB statt als zusammenhängendes Uint8Array. Die
+    // Segmente sind subarray-Views auf die bereits geladenen Streams; ein Blob
+    // referenziert sie nur (keine zweite Gesamtkopie). Dadurch ist die
+    // Gesamtdatei nicht mehr durch das 2-GB-ArrayBuffer-Limit begrenzt —
+    // begrenzt bleibt nur der einzelne Stream (der im Heap liegt).
+    return new Blob([videoU8.subarray(vFtyp.start, vFtyp.end), moov, ...vSegs, ...aSegs], { type: 'video/mp4' });
+  }
+
+  // ===========================================================================
+  // v1.1.14: STREAMING-MERGE über das Origin Private File System (OPFS).
+  // Damit werden Video- und Audiostreams CHUNKWEISE geparst und direkt in eine
+  // Datei geschrieben — kein vollständiger Stream-ArrayBuffer im RAM. Die
+  // fertige Datei wird als File (Blob) an <a download> übergeben; der Browser
+  // streamt sie auf die Platte. OPFS ist in Chromium, Firefox (111+) und
+  // Safari (15.2+) verfügbar; ohne OPFS bleibt der In-Memory-Pfad.
+  // ===========================================================================
+  function mergeBoxHelpers() {
+    const u32 = (b, o) => ((b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3]) >>> 0);
+    const setU32 = (b, o, val) => { b[o] = (val >>> 24) & 0xFF; b[o + 1] = (val >>> 16) & 0xFF; b[o + 2] = (val >>> 8) & 0xFF; b[o + 3] = val & 0xFF; };
+    const typeAt = (b, o) => String.fromCharCode(b[o + 4], b[o + 5], b[o + 6], b[o + 7]);
+    function topBoxes(b) {
+      const res = []; let off = 0;
+      while (off + 8 <= b.length) {
+        const size = u32(b, off);
+        if (size < 8 || off + size > b.length) break;
+        res.push({ type: typeAt(b, off), start: off, size, end: off + size });
+        off += size;
+      }
+      return res;
+    }
+    function childBoxes(b, box) {
+      const res = []; let off = box.start + 8;
+      while (off + 8 <= box.end) {
+        const size = u32(b, off);
+        if (size < 8 || off + size > box.end) break;
+        res.push({ type: typeAt(b, off), start: off, size, end: off + size });
+        off += size;
+      }
+      return res;
+    }
+    function concat(parts) {
+      const total = parts.reduce((s, p) => s + p.length, 0);
+      const r = new Uint8Array(total);
+      let o = 0;
+      for (const p of parts) { r.set(p, o); o += p.length; }
+      return r;
+    }
+    function patchTfhdInSegment(seg, newTrackId) {
+      if (seg.length < 8 || typeAt(seg, 0) !== 'moof') return false;
+      const stack = [{ start: 8, end: seg.length }];
+      while (stack.length) {
+        const cur = stack.pop();
+        let off = cur.start;
+        while (off + 8 <= cur.end) {
+          const size = u32(seg, off);
+          const t = typeAt(seg, off);
+          if (size < 8 || off + size > cur.end) break;
+          if (t === 'tfhd') { setU32(seg, off + 12, newTrackId); return true; }
+          if (t === 'traf' || t === 'moof') stack.push({ start: off + 8, end: off + size });
+          off += size;
+        }
+      }
+      return false;
+    }
+    return { u32, setU32, topBoxes, childBoxes, concat, patchTfhdInSegment };
+  }
+
+  // Baut ftyp + moov (beide traks) aus den Init-Segmenten — identische Logik
+  // wie in mergeFmp4, nur ohne die Medien-Segmente.
+  function buildMergeHeader(videoInit, audioInit) {
+    const h = mergeBoxHelpers();
+    const vBoxes = h.topBoxes(videoInit);
+    const aBoxes = h.topBoxes(audioInit);
+    const vFtyp = vBoxes.find(x => x.type === 'ftyp');
+    const vMoov = vBoxes.find(x => x.type === 'moov');
+    const aMoov = aBoxes.find(x => x.type === 'moov');
+    if (!vFtyp || !vMoov || !aMoov) throw new Error('ftyp/moov fehlt im Init-Segment');
+    const vKids = h.childBoxes(videoInit, vMoov);
+    const aKids = h.childBoxes(audioInit, aMoov);
+    const mvhd = vKids.find(x => x.type === 'mvhd');
+    const vTrak = vKids.find(x => x.type === 'trak');
+    const vMvex = vKids.find(x => x.type === 'mvex');
+    const aTrak = aKids.find(x => x.type === 'trak');
+    const aMvex = aKids.find(x => x.type === 'mvex');
+    if (!mvhd || !vTrak || !vMvex || !aTrak || !aMvex) throw new Error('moov-Bestandteil fehlt');
+    const mvhdCopy = videoInit.slice(mvhd.start, mvhd.end);
+    h.setU32(mvhdCopy, mvhdCopy.length - 4, 3);
+    const vTrakCopy = videoInit.slice(vTrak.start, vTrak.end);
+    const aTrakCopy = audioInit.slice(aTrak.start, aTrak.end);
+    const aTkhd = h.childBoxes(aTrakCopy, { start: 0, size: aTrakCopy.length, end: aTrakCopy.length }).find(x => x.type === 'tkhd');
+    if (!aTkhd) throw new Error('audio-tkhd fehlt');
+    const aVer = aTrakCopy[aTkhd.start + 8];
+    h.setU32(aTrakCopy, aTkhd.start + 16 + (aVer === 1 ? 12 : 4), 2);
+    const vMvexCopy = videoInit.slice(vMvex.start, vMvex.end);
+    const aTrex = h.childBoxes(audioInit, aMvex).find(x => x.type === 'trex');
+    if (!aTrex) throw new Error('audio-trex fehlt');
+    const aTrexCopy = audioInit.slice(aTrex.start, aTrex.end);
+    h.setU32(aTrexCopy, 12, 2);
+    const mvexContent = h.concat([vMvexCopy.slice(8), aTrexCopy]);
+    const mvex = new Uint8Array(8 + mvexContent.length);
+    h.setU32(mvex, 0, 8 + mvexContent.length);
+    mvex[4] = 109; mvex[5] = 118; mvex[6] = 101; mvex[7] = 120;
+    mvex.set(mvexContent, 8);
+    const moovContent = h.concat([mvhdCopy, mvex, vTrakCopy, aTrakCopy]);
+    const moov = new Uint8Array(8 + moovContent.length);
+    h.setU32(moov, 0, 8 + moovContent.length);
+    moov[4] = 109; moov[5] = 111; moov[6] = 111; moov[7] = 118;
+    moov.set(moovContent, 8);
+    const ftyp = videoInit.slice(vFtyp.start, vFtyp.end);
+    return { ftyp, moov };
+  }
+
+  // Streamender Box-Parser: sammelt VOLLSTÄNDIGE Top-Level-Boxen, auch wenn
+  // eine Box über mehrere Netzwerk-Chunks verteilt ist (Carry-Puffer).
+  function makeBoxCollector() {
+    const boxes = [];
+    let carry = new Uint8Array(0);
+    return {
+      push(chunk) {
+        if (!chunk || !chunk.byteLength) return;
+        let buf;
+        if (carry.byteLength) {
+          buf = new Uint8Array(carry.byteLength + chunk.byteLength);
+          buf.set(carry, 0);
+          buf.set(chunk, carry.byteLength);
+        } else {
+          buf = chunk;
+        }
+        let off = 0;
+        while (off + 8 <= buf.byteLength) {
+          const size = (buf[off] << 24 | buf[off + 1] << 16 | buf[off + 2] << 8 | buf[off + 3]) >>> 0;
+          if (size < 8) { off = buf.byteLength; break; }
+          if (off + size > buf.byteLength) break;
+          const type = String.fromCharCode(buf[off + 4], buf[off + 5], buf[off + 6], buf[off + 7]);
+          boxes.push({ type, box: buf.subarray(off, off + size) });
+          off += size;
+        }
+        carry = buf.subarray(off);
+        if (carry.byteLength > 128 * 1024 * 1024) throw new Error('Box zu groß im Stream (' + carry.byteLength + ' B)');
+      },
+      take() { const b = boxes.slice(); boxes.length = 0; return b; },
+      end() { if (carry.byteLength) throw new Error('unvollständige Box am Stream-Ende (' + carry.byteLength + ' B)'); }
+    };
+  }
+
+  // Lädt einen Stream chunkweise, parst die Boxen und schreibt sie (ohne sidx,
+  // Audio-moof mit gepatchter Track-ID) in den OPFS-Writer.
+  async function streamWriteTrack(writer, url, size, startOffset, trackId, signal, onBytes, collector) {
+    for (let start = startOffset; start < size; start += CHUNK_SIZE) {
+      if (signal && signal.aborted) throw new Error('Abgebrochen');
+      const end = Math.min(start + CHUNK_SIZE - 1, size - 1);
+      const r = await fetchRangeChunk(url, start, end, signal);
+      if (r.aborted) throw new Error('Abgebrochen');
+      if (!r.ok || !r.bytes) throw new Error('Chunk ' + start + ' Status ' + r.status);
+      collector.push(new Uint8Array(r.bytes));
+      const boxes = collector.take();
+      for (const b of boxes) {
+        if (b.type === 'sidx') continue;
+        if (trackId === 2 && b.type === 'moof') mergeBoxHelpers().patchTfhdInSegment(b.box, 2);
+        await writer.write(b.box);
+        if (onBytes) onBytes(b.box.byteLength);
+      }
+    }
+    collector.end();
+  }
+
+  // Führt beide Streams streamend in eine OPFS-Datei zusammen und liefert File.
+  async function streamMergeToOpfs(o) {
+    if (!(navigator.storage && navigator.storage.getDirectory) || typeof FileSystemFileHandle === 'undefined' || !FileSystemFileHandle.prototype.createWritable) {
+      throw new Error('OPFS-Streaming wird von diesem Browser nicht unterstützt');
+    }
+    const vInit = await fetchRangeChunk(o.vUrl, 0, o.vInitEnd, o.signal);
+    if (vInit.aborted) throw new Error('Abgebrochen');
+    if (!vInit.ok || !vInit.bytes) throw new Error('Video-Init fehlgeschlagen (Status ' + vInit.status + ')');
+    const aInit = await fetchRangeChunk(o.aUrl, 0, o.aInitEnd, o.signal);
+    if (aInit.aborted) throw new Error('Abgebrochen');
+    if (!aInit.ok || !aInit.bytes) throw new Error('Audio-Init fehlgeschlagen (Status ' + aInit.status + ')');
+    const header = buildMergeHeader(new Uint8Array(vInit.bytes), new Uint8Array(aInit.bytes));
+    const root = await navigator.storage.getDirectory();
+    // v1.1.15: Zwischendateien abgebrochener/früherer Läufe entfernen, damit im
+    // OPFS keine Karteileichen liegen (Quota). Die aktuelle Datei entsteht erst
+    // danach und wird hier nicht getroffen.
+    try {
+      const stale = [];
+      if (typeof root.entries === 'function') {
+        for await (const entry of root.entries()) {
+          const n = Array.isArray(entry) ? entry[0] : (entry && entry.name);
+          if (n && n.indexOf('xyt-merge-') === 0) stale.push(n);
+        }
+      }
+      for (const n of stale) { try { await root.removeEntry(n); } catch (e) { /* ignore */ } }
+      if (stale.length) dbg('[xYT] OPFS-CLEANUP: ' + stale.length + ' alte Zwischendatei(en) entfernt');
+    } catch (e) { /* OPFS-Aufräumen ist optional */ }
+    const name = 'xyt-merge-' + Date.now() + '.mp4';
+    const fh = await root.getFileHandle(name, { create: true });
+    const writer = await fh.createWritable();
+    let received = 0;
+    const total = (Number(o.vSize) || 0) + (Number(o.aSize) || 0);
+    const tick = (n) => { received += n; if (o.onProgress) o.onProgress(received, total); };
+    try {
+      await writer.write(header.ftyp); tick(header.ftyp.byteLength);
+      await writer.write(header.moov); tick(header.moov.byteLength);
+      await streamWriteTrack(writer, o.vUrl, o.vSize, o.vStart, 1, o.signal, tick, makeBoxCollector());
+      await streamWriteTrack(writer, o.aUrl, o.aSize, o.aStart, 2, o.signal, tick, makeBoxCollector());
+      await writer.close();
+      const file = await fh.getFile();
+      return { blob: file, opfsName: name, bytes: received };
+    } catch (e) {
+      try { await writer.abort(); } catch (e2) { /* ignore */ }
+      try { await root.removeEntry(name); } catch (e3) { /* ignore */ }
+      throw e;
+    }
+  }
+
+  // v1.1.14: Kann dieser Browser streamend in eine OPFS-Datei schreiben?
+  // (Chromium, Firefox 111+, Safari 15.2+; ohne OPFS bleibt der RAM-Pfad.)
+  function opfsSupported() {
+    try {
+      return !!(navigator.storage && navigator.storage.getDirectory
+        && typeof FileSystemFileHandle !== 'undefined'
+        && FileSystemFileHandle.prototype.createWritable);
+    } catch (e) { return false; }
   }
 
   // Wählt den besten MP4-Audio-Stream für den Merge (itag 140 AAC bevorzugt).
@@ -1082,7 +1507,7 @@
             return;
           }
           if (!j || !j.streamingData) {
-            finish(reject, new Error('Keine streamingData in ANDROID_VR-Antwort'));
+            finish(reject, new Error('Keine streamingData in der Player-Antwort'));
             return;
           }
           finish(resolve, j);
@@ -1091,7 +1516,7 @@
             finish(reject, new Error('Anfrage abgebrochen.'));
             return;
           }
-          finish(reject, new Error('ANDROID_VR-Netzwerk-/Parsefehler: ' + (e && e.message ? e.message : String(e))));
+          finish(reject, new Error('Player-Netzwerk-/Parsefehler: ' + (e && e.message ? e.message : String(e))));
         });
       } catch (e) {
         finish(reject, e);
@@ -1684,6 +2109,9 @@
 
   function positionPanel() {
     try {
+      // v1.1.03: Panel wird (wieder) geöffnet — laufende Schließ-Timer aus einem
+      // früheren Lauf werden ungültig, damit sie das neue Panel nicht schließen.
+      invalidatePanelClose();
       panel.style.display = 'block';
       const r = btn.getBoundingClientRect();
       const pH = panel.offsetHeight;
@@ -1886,7 +2314,11 @@
         b.dataset.itag = String(s.itag || '');
         b.dataset.url = s.url || '';
         b.addEventListener('click', function () {
-          dbg('[xYT] Klick: itag=' + this.dataset.itag + ' URL=' + (this.dataset.url || '').slice(0, 90)
+          // v1.1.05: KEINE URL-Fragmente mehr loggen — signierte googlevideo-URLs
+          // enthalten Tokens (`sig`, `lsig`, `pot`, `ei` …). Nur Host/Pfad-Kopf.
+          let host = '?';
+          try { host = new URL(this.dataset.url).host; } catch (e) { /* ignore */ }
+          dbg('[xYT] Klick: itag=' + this.dataset.itag + ' | host=' + host
             + (autoMerge ? ' | MERGE mit Audio itag=' + autoMerge.itag : ' | progressiv'));
           runDownload('video', s, label, videoId, title, autoMerge);
         });
@@ -1934,6 +2366,9 @@
     dlAbort = (typeof AbortController === 'function') ? new AbortController() : null;
     const signal = dlAbort ? dlAbort.signal : null;
     resetProgress('Video');
+    // v1.1.03: Ein neuer Download macht Schließ-Timer eines vorigen Laufs
+    // ungültig — sonst könnte ein alter Timer den neuen Status ausblenden.
+    invalidatePanelClose();
     try {
       // Statusanzeige
       // Trusted-Types-sicher (wie renderPanel)
@@ -1979,15 +2414,31 @@
       const ext = (kind === 'video' ? '.mp4' : '.m4a');
       const filename = sanitizeFilename(title) + ' [' + label + ']' + ext;
 
-      // DIAGNOSE (Download-Pfad, Anforderung: exakte URL + Quelle in Konsole):
-      // Zeigt, welche URL beim Klick verwendet wird und woraus sie stammt.
+      // v1.1.13: Größen-Guard für BEIDE Pfade (progressiv und Merge), also VOR
+      // dem ersten Request. Sonst würde ein zu großer Stream erst nach GB
+      // scheitern (ArrayBuffer-Limit) oder in den Browser-Fallback laufen.
+      const guardMax = Math.max(Number(stream && stream.size) || 0, Number(mergeAudio && mergeAudio.size) || 0);
+      // v1.1.14: Mit OPFS-Streaming gibt es keine 2-GB-Sperre mehr — der Guard
+      // greift nur, wenn der Browser kein OPFS kann ODER der Stream nicht
+      // segmentiert ist (dann fehlt das Init-Segment für den moov-Neubau).
+      const canStream = opfsSupported()
+        && stream && Number(stream.initEnd) >= 0
+        && mergeAudio && Number(mergeAudio.initEnd) >= 0;
+      if (guardMax > MAX_BUFFER_BYTES && !canStream) {
+        setStatusText('Einzelstream zu groß für den Browser: ' + fmtGB(guardMax) + ' (Grenze ' + fmtGB(MAX_BUFFER_BYTES) + '). Bitte eine niedrigere Qualität wählen.');
+        hint.textContent = 'Dieser Browser kann keine Streams über ~2 GB verarbeiten (kein OPFS). 1080p/1440p funktionieren; 2160p nur bei kürzeren Videos.';
+        dbg('[xYT] GRÖSSEN-GUARD: ' + guardMax + ' B über Limit ' + MAX_BUFFER_BYTES + ' B — kein Download gestartet');
+        return;
+      }
+
+      // DIAGNOSE (Download-Pfad): Quelle und Format-Kennwerte — v1.1.08 ohne
+      // URL-Fragmente, weil signierte googlevideo-URLs Zugriffswerte enthalten.
       dbg('[xYT] DL-START: kind=' + kind + ' | itag=' + (stream && stream.itag) + ' | label=' + label
         + ' | hasAudio=' + (stream && stream.hasAudio) + ' | Quelle=(' + (stream && stream.srcArray) + ')'
-        + ' | URL=' + (stream && stream.url ? String(stream.url).slice(0, 200) : 'FEHLT'));
+        + ' | host=' + (function () { try { return new URL(String(stream && stream.url)).host; } catch (e) { return 'FEHLT'; } })());
       if (stream && stream.url) {
         const u = String(stream.url);
         dbg('[xYT] DL-URL-PARAMS: range=' + (/range=\d+\/\d+/i.test(u)) + ' | ratebypass=' + (/ratebypass=/i.test(u))
-          + ' | mime=' + (u.match(/mime=([^&]*)/) || [])[1] || '?'
           + ' | itag-URL=' + ((u.match(/[?&]itag=(\d+)/i) || [])[1] || '?'));
       }
 
@@ -2001,6 +2452,30 @@
           + ' (' + (mergeAudio.size || '?') + ' B) → eine MP4');
         hint.textContent = 'Video + Audio werden geladen und zusammengeführt …';
         const total = (Number(stream.size) || 0) + (Number(mergeAudio.size) || 0);
+        // v1.1.14: STREAMING-PFAD für große Dateien. Ab hier wird nichts mehr
+        // als Ganzes in den RAM geladen: Init-Segmente klein, moov neu gebaut,
+        // dann chunkweise geparst und direkt in eine OPFS-Datei geschrieben.
+        if (canStream && (guardMax > MAX_BUFFER_BYTES || total > MAX_BUFFER_BYTES)) {
+          dbg('[xYT] MERGE-STREAMING: Video ' + stream.size + ' B + Audio ' + mergeAudio.size + ' B über OPFS');
+          hint.textContent = 'Große Datei: wird schrittweise geschrieben (kein Speicher-Puffer) …';
+          const vInitEnd = (Number(stream.indexEnd) >= 0) ? Number(stream.indexEnd) : Number(stream.initEnd);
+          const aInitEnd = (Number(mergeAudio.indexEnd) >= 0) ? Number(mergeAudio.indexEnd) : Number(mergeAudio.initEnd);
+          const res = await streamMergeToOpfs({
+            vUrl: stream.url, aUrl: mergeAudio.url,
+            vSize: Number(stream.size) || 0, aSize: Number(mergeAudio.size) || 0,
+            vInitEnd: vInitEnd, aInitEnd: aInitEnd,
+            vStart: vInitEnd + 1, aStart: aInitEnd + 1,
+            signal: signal,
+            onProgress: function (rec, tot) { updateProgress('Video+Audio', rec, tot); }
+          });
+          setBarProgress(100);
+          setStatusText('Daten vollständig geladen (' + formatBytes(res.blob.size) + ') — Speichern angestoßen: ' + filename);
+          saveBlob(res.blob, filename);
+          autoClosePanelAfter();
+          hint.textContent = 'Datei (Video + Audio, mit Ton) wird im Browser-Download-Ordner gespeichert.';
+          dbg('[xYT] MERGE-STREAMING-FERTIG: ' + res.blob.size + ' B');
+          return;
+        }
         let vRecv = 0, aRecv = 0;
         // v1.0.98: gemeinsame Fortschrittsanzeige. Bei parallelen Transfers ist
         // die Phase ehrlich „Video+Audio" (keine erfundene Einzelphase).
@@ -2012,7 +2487,16 @@
         // Verhindert eine unhandled rejection, wenn das Video zuerst aufgibt.
         const aPromise = downloadStreamBytes(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); }, { itag: mergeAudio.itag, videoId: videoId, kind: 'audio' }, mergeAudio, signal);
         aPromise.catch(function () { /* wird unten ausgewertet */ });
-        const vBytes = await vPromise;
+        let vBytes;
+        try {
+          vBytes = await vPromise;
+        } catch (vErr) {
+          // v1.1.08: Endgültiger Video-Fehler → den zugehörigen Audio-Transfer
+          // stoppen, statt ihn weiterlaufen zu lassen (keine halben Downloads).
+          try { if (dlAbort) dlAbort.abort(); } catch (e) { /* ignore */ }
+          dbg('[xYT] MERGE-ABBRUCH: Video fehlgeschlagen — Audio-Transfer beendet.');
+          throw vErr;
+        }
         let aBytes = null;
         try {
           aBytes = await aPromise;
@@ -2030,7 +2514,7 @@
           setBarProgress(100);
           setStatusText('Download abgeschlossen (ohne Ton): ' + filename);
           saveBlob(new Blob([vBytes], { type: 'video/mp4' }), filename);
-          autoClosePanelAfter(2500);
+          autoClosePanelAfter();
           hint.textContent = 'Video gespeichert (ohne Ton — Audiostream war nicht verfügbar).';
           return;
         }
@@ -2076,24 +2560,39 @@
               console.warn('[xYT] Audio-Speichern fehlgeschlagen: ' + (e5 && e5.message ? e5.message : String(e5)));
               setStatusText('Merge nicht möglich — NUR Video gespeichert (Audio-Speichern fehlgeschlagen).');
             }
-            autoClosePanelAfter(4000);
+            // v1.1.03: Auto-Schließen beginnt erst NACH dem letzten tatsächlich
+            // ausgelösten Speichervorgang (Audio, 900 ms nach dem Video).
+            autoClosePanelAfter();
           }, 900);
           return;
         }
-        dbg('[xYT] MERGE-OK: gemergt=' + merged.length + ' B (Video ' + vBytes.length + ' + Audio ' + aBytes.length + ')');
+        dbg('[xYT] MERGE-OK: gemergt=' + merged.size + ' B (Video ' + vBytes.length + ' + Audio ' + aBytes.length + ')');
         setBarProgress(100);
         setStatusText('Download abgeschlossen: ' + filename);
-        saveBlob(new Blob([merged], { type: 'video/mp4' }), filename);
-        autoClosePanelAfter(2500);
+        // v1.1.13: merged ist bereits ein Blob (keine zweite Gesamtkopie im Heap).
+        saveBlob(merged, filename);
+        autoClosePanelAfter();
         hint.textContent = 'Datei (Video + Audio, mit Ton) wird im Browser-Download-Ordner gespeichert.';
         return;
       }
 
-      downloadUrl(stream.url, filename, stream.size, signal);
-
       st.textContent = 'Download gestartet: ' + filename;
       st.className = 'xyt-dl-status';
       hint.textContent = 'Datei wird im Browser-Download-Ordner gespeichert.';
+      // v1.1.05: Den ECHTEN Abschluss abwarten. Vorher war `running` schon frei,
+      // während der Transfer noch lief → ein zweiter Download oder ein Abbruch
+      // konnte parallel laufen.
+      const res = await downloadUrl(stream.url, filename, stream.size, signal);
+      if (res && res.aborted) {
+        // Status hat downloadUrl bereits gesetzt; hier nichts überschreiben.
+        if (lastJob) lastJob = lastJob; // Retry bleibt verfügbar
+      } else if (res && res.ok) {
+        setStatusText('Download abgeschlossen: ' + filename + (res.confirmed === false ? ' (Speichern angestoßen)' : ''));
+      } else if (res && res.unconfirmed) {
+        setStatusText('Browser-Download angestoßen (unbestätigt) — Datei im Download-Ordner prüfen.');
+      } else if (res && res.error) {
+        throw new Error(res.error);
+      }
     } catch (err) {
       // v1.0.98: Abbruch ist kein Fehler — eigener Text, kein Fehler-Overlay.
       const aborted = dlCancelled || (err && err.aborted) || /Abgebrochen/.test(String((err && err.message) || err));
@@ -2126,6 +2625,8 @@
 
   function hidePanel() {
     if (panel) panel.style.display = 'none';
+    // v1.1.03: Beim manuellen Schließen laufende Auto-Schließ-Timer entwerten.
+    invalidatePanelClose();
     // v1.0.94: laufende Formatanfrage verwerfen und technisch abbrechen, damit
     // eine späte Antwort nicht ein neues Video oder einen Retry überschreibt.
     loadSeq++;
