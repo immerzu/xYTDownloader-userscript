@@ -113,3 +113,5 @@
 2. **GM-lose Umgebungen (Via-eigene Skript-Engine?):** `downloadUrl` hat ein obsoletes `typeof GM_xmlhttpRequest`-Gate (Z. 354) → ohne GM-APIs landen progressive Downloads still in `fallbackDownload` (GM_download/`window.open`) statt in den nativen fetch-Chunks. Kandidat für einen Via-kompatiblen Fix (Gate entfernen).
 3. **Kein Timeout in `fetchAndroidVrPlayer`** (Z. 849): Ein hängender Player-Request lässt das Panel dauerhaft auf „Formate werden geladen …" stehen.
 4. **Merge-Pfad ohne Status-0-Fallback** (`downloadStreamBytes`, Z. 526): Seit v1.0.91 wird die Ursache geloggt, aber anders als bei `downloadUrl` gibt es keinen Notausgang (nur 403/416 → URL-Refresh).
+
+**Versionszweig (Nutzeranweisung 2026-10-18):** Naechste Fassung nach v1.0.100 = **1.1.00**, danach 1.1.01 ff. — nicht mehr 1.0.xx.
