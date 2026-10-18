@@ -1391,3 +1391,8 @@ Metablock enthält jetzt dauerhaft:
 
 ### Build
 `Ausgabe\xyt-downloader-v1.0.100.user.js`, 113.654 B, 2260 Zeilen, SHA256 `04ade84a0314702d3644401bfbb31c25541e30015b148d7737a5fae703f7042c`, `node --check` OK, `fc /b` identisch. v1.0.98 (`64f9ad24…`) und v1.0.99 (`50cde809…`) bleiben unangetastet.
+
+**Release v1.0.100 (2026-10-18):**
+- **GitHub:** Commit `84dc029`, Tag `v1.0.100` + Release mit Asset `xyt-downloader-v1.0.100.user.js` (113.654 Bytes, sha256 `04ade84a0314702d3644401bfbb31c25541e30015b148d7737a5fae703f7042c`).
+- **Greasy Fork:** Übernahme 2026-10-18T02:40:39Z (18 s nach Push) — GF-API `version: 1.0.100`, `code_size: 111394`. Quellcode-Abgleich: 2260 Zeilen, **4 Abweichungen** = nur Whitespace in `@downloadURL`/`@updateURL` (GF normalisiert auf ein Leerzeichen), sonst identisch.
+- v1.0.98 und v1.0.99 wurden **nicht** veröffentlicht (nur lokal, Artefakte bleiben erhalten).
