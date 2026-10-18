@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.1.15
+// @version      1.1.16
 // @description One-click YouTube downloader for /watch, /shorts and /live: up to 4K with audio, DASH merge, live progress, cancel and retry. No third-party download services; direct VISIONOS client.
 // @description:de YouTube-Downloader für /watch, /shorts und /live: bis 4K mit Ton, DASH-Merge, Live-Fortschritt, Abbrechen und erneut versuchen. Keine Download-Dienste von Drittanbietern, direkter VISIONOS-Client.
 // @description:ru Скачивание YouTube для /watch, /shorts и /live: до 4K со звуком, объединение DASH, прогресс в реальном времени, отмена и повтор. Без сторонних сервисов загрузки, прямой клиент VISIONOS.
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.1.15';
+  const MY_VERSION = '1.1.16';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -1281,6 +1281,79 @@
     collector.end();
   }
 
+  // ===========================================================================
+  // v1.1.16: TAB-SICHERE OPFS-DATEIVERWALTUNG.
+  // Jede Zwischendatei bekommt eine eindeutige ID und wird während des
+  // Schreibens durch ein Web-Lock (navigator.locks) geschützt. Ein Cleanup
+  // löscht eine Datei NUR, wenn ihr Lock nachweislich frei ist UND sie alt
+  // genug ist (laufende Blob-Downloads brauchen die Datei noch). Ohne Web Lock
+  // (ältere Browser) werden fremde Dateien gar nicht angefasst — nur sehr alte
+  // Karteileichen (> 6 h).
+  // ===========================================================================
+  const MERGE_PREFIX = 'xyt-merge-';
+  const MERGE_STALE_MS = 30 * 60 * 1000;            // mit Web Locks: Karenz für laufende Downloads
+  const MERGE_STALE_NO_LOCKS_MS = 6 * 60 * 60 * 1000; // ohne Web Locks: nur echte Karteileichen
+  let activeOpfsName = null;
+
+  function mergeLockName(fileName) { return 'xyt-lock-' + fileName; }
+  function webLocksAvailable() {
+    try { return !!(navigator.locks && typeof navigator.locks.request === 'function'); } catch (e) { return false; }
+  }
+  // Führt fn unter exklusivem Lock für diese Datei aus (Fallback: ohne Lock).
+  async function withMergeLock(fileName, fn) {
+    if (!webLocksAvailable()) return fn();
+    return navigator.locks.request(mergeLockName(fileName), { mode: 'exclusive' }, fn);
+  }
+  // true = Lock gehalten (Datei aktiv), false = frei (verwaist), null = unbekannt.
+  async function mergeLockHeld(fileName) {
+    if (!webLocksAvailable()) return null;
+    let held = false;
+    await navigator.locks.request(mergeLockName(fileName), { ifAvailable: true }, async (lock) => { held = !lock; });
+    return held;
+  }
+  function mergeFileTimestamp(n) {
+    const m = String(n).match(/xyt-merge-(?:[a-z0-9]+-)?(\d{13})\.mp4$/i);
+    return m ? Number(m[1]) : 0;
+  }
+  // Entfernt ausschließlich verwaiste, ausreichend alte Zwischendateien.
+  async function cleanupOpfsMerges(root, ownName) {
+    if (typeof root.entries !== 'function') return 0;
+    const now = Date.now();
+    const hasLocks = webLocksAvailable();
+    const names = [];
+    for await (const entry of root.entries()) {
+      const n = Array.isArray(entry) ? entry[0] : (entry && entry.name);
+      if (n && n.indexOf(MERGE_PREFIX) === 0) names.push(n);
+    }
+    let removed = 0;
+    for (const n of names) {
+      if (ownName && n === ownName) continue;
+      const ts = mergeFileTimestamp(n);
+      const age = ts ? (now - ts) : Infinity;
+      if (!hasLocks) {
+        if (age < MERGE_STALE_NO_LOCKS_MS) continue;
+      } else {
+        if (age < MERGE_STALE_MS) continue;
+        if (await mergeLockHeld(n)) continue;
+      }
+      try { await root.removeEntry(n); removed++; } catch (e) { /* ignore */ }
+    }
+    return removed;
+  }
+
+  // Beim Verlassen der Seite die eigene Zwischendatei freigeben (best effort —
+  // ein laufender Blob-Download endet mit der Seite ohnehin).
+  window.addEventListener('pagehide', function () {
+    const n = activeOpfsName;
+    if (!n) return;
+    activeOpfsName = null;
+    try {
+      navigator.storage.getDirectory().then(function (root) {
+        return root.removeEntry(n);
+      }).catch(function () { /* ignore */ });
+    } catch (e) { /* ignore */ }
+  });
+
   // Führt beide Streams streamend in eine OPFS-Datei zusammen und liefert File.
   async function streamMergeToOpfs(o) {
     if (!(navigator.storage && navigator.storage.getDirectory) || typeof FileSystemFileHandle === 'undefined' || !FileSystemFileHandle.prototype.createWritable) {
@@ -1294,37 +1367,34 @@
     if (!aInit.ok || !aInit.bytes) throw new Error('Audio-Init fehlgeschlagen (Status ' + aInit.status + ')');
     const header = buildMergeHeader(new Uint8Array(vInit.bytes), new Uint8Array(aInit.bytes));
     const root = await navigator.storage.getDirectory();
-    // v1.1.15: Zwischendateien abgebrochener/früherer Läufe entfernen, damit im
-    // OPFS keine Karteileichen liegen (Quota). Die aktuelle Datei entsteht erst
-    // danach und wird hier nicht getroffen.
+    // v1.1.16: Nur verwaiste Dateien entfernen (Lock frei + alt genug).
     try {
-      const stale = [];
-      if (typeof root.entries === 'function') {
-        for await (const entry of root.entries()) {
-          const n = Array.isArray(entry) ? entry[0] : (entry && entry.name);
-          if (n && n.indexOf('xyt-merge-') === 0) stale.push(n);
-        }
-      }
-      for (const n of stale) { try { await root.removeEntry(n); } catch (e) { /* ignore */ } }
-      if (stale.length) dbg('[xYT] OPFS-CLEANUP: ' + stale.length + ' alte Zwischendatei(en) entfernt');
+      const removed = await cleanupOpfsMerges(root, null);
+      if (removed) dbg('[xYT] OPFS-CLEANUP: ' + removed + ' verwaiste Zwischendatei(en) entfernt');
     } catch (e) { /* OPFS-Aufräumen ist optional */ }
-    const name = 'xyt-merge-' + Date.now() + '.mp4';
+    const name = MERGE_PREFIX + Math.random().toString(36).slice(2, 8) + '-' + Date.now() + '.mp4';
+    activeOpfsName = name;
     const fh = await root.getFileHandle(name, { create: true });
     const writer = await fh.createWritable();
     let received = 0;
     const total = (Number(o.vSize) || 0) + (Number(o.aSize) || 0);
     const tick = (n) => { received += n; if (o.onProgress) o.onProgress(received, total); };
     try {
-      await writer.write(header.ftyp); tick(header.ftyp.byteLength);
-      await writer.write(header.moov); tick(header.moov.byteLength);
-      await streamWriteTrack(writer, o.vUrl, o.vSize, o.vStart, 1, o.signal, tick, makeBoxCollector());
-      await streamWriteTrack(writer, o.aUrl, o.aSize, o.aStart, 2, o.signal, tick, makeBoxCollector());
-      await writer.close();
+      // v1.1.16: Schreiben unter exklusivem Web-Lock — andere Tabs sehen die
+      // Datei damit als AKTIV und lassen sie unangetastet.
+      await withMergeLock(name, async () => {
+        await writer.write(header.ftyp); tick(header.ftyp.byteLength);
+        await writer.write(header.moov); tick(header.moov.byteLength);
+        await streamWriteTrack(writer, o.vUrl, o.vSize, o.vStart, 1, o.signal, tick, makeBoxCollector());
+        await streamWriteTrack(writer, o.aUrl, o.aSize, o.aStart, 2, o.signal, tick, makeBoxCollector());
+        await writer.close();
+      });
       const file = await fh.getFile();
       return { blob: file, opfsName: name, bytes: received };
     } catch (e) {
       try { await writer.abort(); } catch (e2) { /* ignore */ }
       try { await root.removeEntry(name); } catch (e3) { /* ignore */ }
+      activeOpfsName = null;
       throw e;
     }
   }
