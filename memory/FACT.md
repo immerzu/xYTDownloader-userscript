@@ -1,4 +1,4 @@
-# xYTDownloader — FACT SHEET (Stand: v1.0.97, 2026-10-17)
+# xYTDownloader — FACT SHEET (Stand: v1.0.100, 2026-10-18)
 
 ## Kerndaten
 - **Projekt-Root:** `F:\001_Coding_Projekte\xYTDownloader\`

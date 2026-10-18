@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.0.97
+// @version      1.0.100
 // @description One-click YouTube downloader. Up to 4K with audio. /watch, /shorts, /live. No external APIs, direct VISIONOS client, DASH merging.
 // @description:de YouTube-Downloader mit einem Klick. Bis 4K mit Ton. /watch, /shorts, /live. Keine externen APIs, direkter VISIONOS-Client, DASH-Merging.
 // @description:ru Скачивание YouTube в один клик. До 4K со звуком. /watch, /shorts, /live. Без внешних API, прямой VISIONOS, объединение DASH.
@@ -20,13 +20,13 @@
 // @run-at       document-idle
 // @noframes
 // @license      MIT
-// v1.0.96: Update-Adressen fest im Metablock. Vorher fehlten beide Zeilen im
-// GitHub-Quellcode — eine lokal installierte .user.js blieb dauerhaft auf ihrer
-// Version, weil Tampermonkey ohne @updateURL/@downloadURL nicht nach Updates
-// sucht. Greasy Fork setzt diese Zeilen beim Ausliefern ohnehin selbst ein.
 // @downloadURL  https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js
 // @updateURL    https://update.greasyfork.org/scripts/589972/xYTDownloader.meta.js
 // ==/UserScript==
+
+// v1.0.99: Die Update-Adressen stehen jetzt DIREKT im Metablock. In v1.0.98
+// lagen Kommentarzeilen zwischen den @-Einträgen — Tampermonkey übernahm
+// Die beiden Update-Zeilen dadurch nicht (im Dashboard fehlte der Update-Pfeil).
 
 /* ============================================================================
  * xYTDownloader — Installation Guide
@@ -71,7 +71,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.0.97';
+  const MY_VERSION = '1.0.100';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] URL:', window.location.href);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -302,7 +302,69 @@
     } catch (e) { console.warn('[xYT] setBarProgress Fehler:', e); }
   }
 
-  // Blob via ObjectURL + <a download> speichern (Dateiname = Titel + Qualität)
+  // -------------------------------------------------------------------------
+  // v1.0.98: Download-Steuerung (Abbruch) und Fortschrittsrechnung.
+  // Phase (Video/Audio/Merge/Abschluss), geladene/gesamte Menge, Geschwindigkeit
+  // (gleitendes ~2-s-Fenster) und Restzeit. DOM wird auf max. ~4 Updates/s
+  // gedrosselt — wichtig, weil der MutationObserver sonst bei jedem Chunk feuert.
+  // -------------------------------------------------------------------------
+  let dlAbort = null;       // AbortController des LAUFENDEN Downloads
+  let dlCancelled = false;  // true = Nutzer hat abgebrochen
+  let dlPhase = '';
+  let dlLastUpdate = 0;
+  const dlSamples = [];     // {t, b} für die Geschwindigkeit
+
+  function resetProgress(phase) {
+    dlPhase = phase || '';
+    dlLastUpdate = 0;
+    dlSamples.length = 0;
+  }
+  function fmtDuration(sec) {
+    if (!isFinite(sec) || sec <= 0) return '—';
+    if (sec < 60) return Math.ceil(sec) + ' s';
+    const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+    return m + ' min ' + s + ' s';
+  }
+  // total 0 = unbekannt; speed 0 = noch keine Messung (wird als „…" gezeigt)
+  function updateProgress(phase, received, total) {
+    // v1.0.98: Nach dem Abbruch darf kein laufender Chunk den Status wieder
+    // überschreiben (Race zwischen Abort und letztem Fortschritts-Update).
+    if (dlCancelled) return;
+    const now = Date.now();
+    if (now - dlLastUpdate < 250) return;   // Drossel
+    dlLastUpdate = now;
+    if (phase) dlPhase = phase;
+    dlSamples.push({ t: now, b: received });
+    while (dlSamples.length > 1 && now - dlSamples[0].t > 2000) dlSamples.shift();
+    let speed = 0;
+    if (dlSamples.length >= 2) {
+      const a = dlSamples[0], z = dlSamples[dlSamples.length - 1];
+      const dt = (z.t - a.t) / 1000;
+      if (dt > 0.2) speed = (z.b - a.b) / dt;
+    }
+    const hasTotal = total > 0;
+    const pct = hasTotal ? Math.max(0, Math.min(100, Math.round((received / total) * 100))) : 0;
+    const parts = [];
+    if (dlPhase) parts.push(dlPhase);
+    parts.push(hasTotal ? (pct + ' %') : '…');
+    parts.push(hasTotal ? (formatBytes(received) + ' / ' + formatBytes(total)) : ('>' + formatBytes(received)));
+    parts.push(speed > 0 ? (formatBytes(speed) + '/s') : '…/s');
+    parts.push('Rest ' + (hasTotal && speed > 0 ? fmtDuration((total - received) / speed) : '—'));
+    setBarProgress(hasTotal ? pct : Math.min(99, Math.max(3, Math.round((received / Math.max(received + CHUNK_SIZE, 1)) * 100))));
+    setStatusText(parts.join(' · '));
+    dbg('[xYT] PROGRESS: phase=' + dlPhase + ' received=' + received + ' total=' + total + ' speed=' + Math.round(speed) + ' B/s');
+  }
+
+  // v1.0.98: bricht den laufenden Download ab. Kein Blob, keine Datei.
+  function cancelDownload() {
+    if (!running) return;
+    dlCancelled = true;
+    dbg('[xYT] CANCEL: Nutzer hat abgebrochen (Phase ' + dlPhase + ')');
+    if (dlAbort) { try { dlAbort.abort(); } catch (e) { /* ignore */ } }
+    setBarProgress(0);
+    setStatusText('Download abgebrochen (' + (dlPhase || 'Download') + ') — keine Datei gespeichert.');
+  }
+
   function saveBlob(blob, filename) {
     const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -330,7 +392,7 @@
   // Stream Audio itag 140 und Video itag 401 komplett per `&range=` +
   // `&ratebypass=yes`. v1.0.91: bewusst OHNE Custom-Header (siehe unten) — die
   // signierte URL trägt alles Nötige. Liefert {status, bytes, ok, headers, err}.
-  function fetchRangeChunk(url, start, end) {
+  function fetchRangeChunk(url, start, end, signal) {
     let u = String(url);
     if (!/range=/i.test(u)) {
       u += (u.indexOf('?') >= 0 ? '&' : '?') + 'range=' + start + '-' + end;
@@ -347,12 +409,16 @@
     // (crbug 571722) — deshalb fiel es in Yandex/Chrome nie auf. 'Referer' und
     // 'Accept-Encoding' sind in beiden Browsern forbidden und kamen nie an.
     // Die signierte URL trägt alle nötigen Parameter (&range=/&ratebypass=).
-    return fetch(u).then(function (res) {
+    return fetch(u, signal ? { signal: signal } : undefined).then(function (res) {
       if (!res.ok) return { status: res.status, bytes: null, ok: false, headers: res.headers };
       return res.arrayBuffer().then(function (ab) {
         return { status: res.status, bytes: ab, ok: true, headers: res.headers };
       });
     }).catch(function (err) {
+      // v1.0.98: Nutzer-Abbruch getrennt kennzeichnen (kein Retry, kein Fallback).
+      if (err && err.name === 'AbortError') {
+        return { status: 0, bytes: null, ok: false, aborted: true, err: err, headers: null };
+      }
       // v1.0.91: Ursache sichtbar machen (Netzwerk/CORS/Blocker) — wurde vorher
       // verschluckt; im Panel stand nur „Status 0" ohne jeden Anhaltspunkt.
       console.warn('[xYT] fetch fehlgeschlagen (Netzwerk/CORS/Erweiterung?): ' + (err && err.message ? err.message : String(err)));
@@ -360,7 +426,7 @@
     });
   }
 
-  function downloadUrl(url, filename, expectedSize) {
+  function downloadUrl(url, filename, expectedSize, signal) {
     let knownTotal = Number(expectedSize) || 0;   // v1.0.38: let, damit die Probe die Größe nachtragen kann
     // B3-Fix (2026-10-17): KEIN GM_xmlhttpRequest-Gate mehr. Der Download läuft
     // vollständig über natives fetch (fetchRangeChunk); die API wird nirgends
@@ -373,19 +439,10 @@
     const MAX_NET_TRIES = 3;
 
     function reportProgress() {
-      if (knownTotal > 0) {
-        const pct = Math.max(0, Math.min(100, Math.round((received / knownTotal) * 100)));
-        setBarProgress(pct);
-        setStatusText('Download läuft: ' + pct + ' % (' + (received / 1048576).toFixed(1) + ' / ' + (knownTotal / 1048576).toFixed(1) + ' MB)');
-        dbg('[xYT] Chunk-Fortschritt: received=' + received + ' total=' + knownTotal + ' → pct=' + pct);
-      } else {
-        // v1.0.38: Auch ohne bekannte Gesamtgröße den Balken sichtbar machen —
-        // statisch wachsend anhand der bereits geladenen Bytes (kein %-Sprung,
-        // kein Sweep). FinishDownload setzt später 100 %.
-        setBarProgress(Math.min(99, Math.max(5, Math.round((received / Math.max(received + CHUNK_SIZE, 1)) * 100))));
-        setStatusText('Download läuft: ' + (received / 1048576).toFixed(1) + ' MB geladen …');
-        dbg('[xYT] Chunk-Fortschritt: received=' + received + ' (total unbekannt)');
-      }
+      // v1.0.98: zentrale Fortschrittsanzeige (Phase · Menge · Tempo · Restzeit),
+      // gedrosselt in updateProgress(); bei unbekannter Größe wächst der Balken
+      // weiterhin statisch statt zu springen.
+      updateProgress('Video', received, knownTotal);
     }
 
     // v1.0.38: Bei unbekannter Größe (progressive Formate liefern in der
@@ -398,7 +455,8 @@
       if (probed || knownTotal > 0) { nextChunk(0); return; }
       probed = true;
       // v1.0.71: native fetch (konsistent mit den Chunks; kein 403 in der Sandbox).
-      fetchRangeChunk(url, 0, 0).then(function (r) {
+      fetchRangeChunk(url, 0, 0, signal).then(function (r) {
+        if (r.aborted) return; // v1.0.98: Nutzer-Abbruch
         try {
           const cr = String(r.headers && r.headers.get && (r.headers.get('content-range') || '') || '');
           const m = cr.match(/bytes\s+0-0\/(\d+)/i);
@@ -439,7 +497,8 @@
       // DIAGNOSE: Jede Chunk-Anfrage mit exakter Range protokollieren
       dbg('[xYT] DL-CHUNK-REQ: Range=bytes ' + start + '-' + end + ' (erwartete Chunk-Größe max ' + CHUNK_SIZE + ' B, knownTotal=' + knownTotal + ')');
       // v1.0.71: native fetch statt GM_xmlhttpRequest (siehe fetchRangeChunk-Kommentar).
-      fetchRangeChunk(url, start, end).then(function (r) {
+      fetchRangeChunk(url, start, end, signal).then(function (r) {
+        if (r.aborted) { const e = new Error('Abgebrochen'); e.aborted = true; throw e; }
         if (!r.ok || !r.bytes) {
           throw new Error('leere Chunk-Antwort (Status ' + r.status + ')');
         }
@@ -464,6 +523,12 @@
           nextChunk(prev + buf.byteLength);
         }
       }).catch(function (e3) {
+        // v1.0.98: Abbruch hat Vorrang — keine Retries, kein GM-Fallback.
+        if (dlCancelled || (e3 && e3.aborted) || /Abgebrochen/.test(String((e3 && e3.message) || e3))) {
+          dbg('[xYT] DL-CANCEL: abgebrochen bei Byte ' + received);
+          setStatusText('Download abgebrochen — keine Datei gespeichert.');
+          return;
+        }
         // B2-Fix (2026-10-17): Temporäre Fehler (Netzabbruch/Status 0, 5xx, 429)
         // werden begrenzt wiederholt, bevor der GM-Fallback greift. Der Chunk wird
         // dabei NICHT gepusht (received/chunks unverändert) → keine doppelten Daten,
@@ -550,7 +615,7 @@
   // für denselben itag) und ab der letzten Byte-Position fortgesetzt — die
   // Strategie gegen YouTube-URL-Limits.
   // -------------------------------------------------------------------------
-  function downloadStreamBytes(url, expectedSize, onProgress, refreshInfo, initRange) {
+  function downloadStreamBytes(url, expectedSize, onProgress, refreshInfo, initRange, signal) {
     return new Promise(function (resolve, reject) {
       const knownTotal = Number(expectedSize) || 0;
       const chunks = [];
@@ -614,7 +679,8 @@
         }
         const start = 0;
         const end = initEndOffset();
-        fetchRangeChunk(currentUrl, start, end).then(function (r) {
+        fetchRangeChunk(currentUrl, start, end, signal).then(function (r) {
+          if (r.aborted) { const e = new Error('Abgebrochen'); e.aborted = true; reject(e); return; }
           if (!r.ok || !r.bytes) {
             console.warn('[xYT] init-Segment fehlgeschlagen (Status ' + r.status + ') — setze ohne init fort.');
             initDone = true; initLoaded = true;
@@ -667,7 +733,8 @@
           finishOk();
           return;
         }
-        fetchRangeChunk(currentUrl, start, end).then(function (r) {
+        fetchRangeChunk(currentUrl, start, end, signal).then(function (r) {
+          if (r.aborted) { const e = new Error('Abgebrochen'); e.aborted = true; reject(e); return; }
           // v1.0.72: 403 → frische URL holen und ab `start` nochmal versuchen.
           if (!r.ok || !r.bytes) {
             // v1.0.91: Ursache aus dem fetch-Fehler in die Meldung übernehmen
@@ -851,11 +918,32 @@
   // Nur MP4-Audio (mp4a/AAC) passt in den MP4-Container — Opus/WEBM nicht.
   function pickMergeAudio(audioOnly) {
     if (!Array.isArray(audioOnly) || audioOnly.length === 0) return null;
+    // v1.0.98: NUR MP4-Audio. Vorher fiel die Auswahl auf beliebiges Audio
+    // zurück (z. B. WebM/Opus) — mergeFmp4 kann das nicht muxen, der Fehler
+    // fiel erst nach dem kompletten Download auf. Jetzt: kein Merge-Angebot,
+    // das Panel kennzeichnet die Qualität als „nur Video".
     const mp4 = audioOnly.filter(function (s) { return (s.mime || '').indexOf('audio/mp4') === 0; });
-    const pool = mp4.length > 0 ? mp4 : audioOnly;
+    if (mp4.length === 0) return null;
     // Höchste Bitrate zuerst (extractStreams sortiert schon, hier zusätzlich sichern)
-    pool.sort(function (a, b) { return (b.bitrate || 0) - (a.bitrate || 0); });
-    return pool[0] || null;
+    mp4.sort(function (a, b) { return (b.bitrate || 0) - (a.bitrate || 0); });
+    return mp4[0] || null;
+  }
+
+  // v1.0.98: kompakte Codec-/Container-Labels für die Qualitätsauswahl.
+  function shortCodec(codec) {
+    const c = String(codec || '').toLowerCase();
+    if (c.indexOf('avc1') === 0 || c.indexOf('avc3') === 0) return 'H.264';
+    if (c.indexOf('av01') === 0) return 'AV1';
+    if (c.indexOf('vp9') === 0 || c.indexOf('vp09') === 0) return 'VP9';
+    if (c.indexOf('mp4a') === 0) return 'AAC';
+    if (c.indexOf('opus') === 0) return 'Opus';
+    return c ? c.split('.')[0].toUpperCase() : '';
+  }
+  function containerLabel(mime) {
+    const m = String(mime || '').toLowerCase();
+    if (m.indexOf('video/mp4') === 0 || m.indexOf('audio/mp4') === 0) return 'MP4';
+    if (m.indexOf('video/webm') === 0 || m.indexOf('audio/webm') === 0) return 'WebM';
+    return '';
   }
 
   // -------------------------------------------------------------------------
@@ -1775,19 +1863,26 @@
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'xyt-dl-opt';
-        // Flach: nur Label + fps + Größe — OHNE „(mit Ton)/(ohne Ton)"
+        // v1.0.98: kompakte Technik-Zeile — Auflösung · Container/Codec · Größe
+        // und ein knapper Ton-Status. Details stehen im Tooltip (b.title).
         const label = s.label + (s.fps >= 60 ? ' ' + s.fps + 'fps' : '');
         const sizeTxt = s.size ? ' · ' + formatBytes(s.size) : '';
-        b.textContent = label + sizeTxt;
         const autoMerge = s.hasAudio ? null : mergeAudio;
-        b.title = autoMerge
-          ? (s.mime + ' + ' + autoMerge.mime + ' → wird automatisch zu EINER MP4 mit Ton zusammengeführt')
-          : (s.mime + ' · mit Ton');
-        // Diagnose: AnzeigeText enthält KEINE Ton-Suffixe, Höhe >= 360
-        dbg('[xYT] DIAGNOSE-PANEL: flach | itag=' + s.itag
-          + ' | AnzeigeText="' + b.textContent + '"'
-          + ' | hatTonSuffix=' + (b.textContent.indexOf('(mit Ton)') !== -1 || b.textContent.indexOf('(ohne Ton)') !== -1)
-          + ' | autoMerge=' + (autoMerge ? 'ja (Audio itag ' + autoMerge.itag + ')' : 'nein (progressiv)'));
+        const tech = (containerLabel(s.mime) || '?') + (shortCodec(s.codec) ? '/' + shortCodec(s.codec) : '');
+        let tonTxt = '';
+        if (s.hasAudio) tonTxt = ' · mit Ton';
+        else if (autoMerge) tonTxt = ' · + Ton';
+        else tonTxt = ' · nur Video';
+        b.textContent = label + ' · ' + tech + sizeTxt + tonTxt;
+        b.title = s.hasAudio
+          ? (s.mime + ' (Codec ' + (s.codec || '?') + ') · enthält bereits Ton')
+          : (autoMerge
+            ? (s.mime + ' (Codec ' + (s.codec || '?') + ') + Audio ' + autoMerge.mime + ' → wird zu EINER MP4 mit Ton zusammengeführt')
+            : (s.mime + ' (Codec ' + (s.codec || '?') + ') · KEIN MP4-Audio verfügbar — wird als reine Videodatei gespeichert'));
+        // Diagnose: Kennzeichnung + Merge-Entscheidung in der Konsole
+        dbg('[xYT] DIAGNOSE-PANEL: itag=' + s.itag
+          + ' | Text="' + b.textContent + '"'
+          + ' | autoMerge=' + (autoMerge ? 'ja (Audio itag ' + autoMerge.itag + ')' : 'nein'));
         b.dataset.itag = String(s.itag || '');
         b.dataset.url = s.url || '';
         b.addEventListener('click', function () {
@@ -1832,6 +1927,13 @@
     running = true;
     lastJob = { kind, stream, label, videoId, title, mergeAudio };
     const startedAt = Date.now();
+    // v1.0.98: eigener Abbruchkanal je Download — getrennt vom Formatanfrage-
+    // Abort (playerAbort), damit ein SPA-Wechsel den Download nicht killt und
+    // ein Download-Abbruch keine Panel-Anfrage trifft.
+    dlCancelled = false;
+    dlAbort = (typeof AbortController === 'function') ? new AbortController() : null;
+    const signal = dlAbort ? dlAbort.signal : null;
+    resetProgress('Video');
     try {
       // Statusanzeige
       // Trusted-Types-sicher (wie renderPanel)
@@ -1855,6 +1957,20 @@
       bar.firstChild.className = 'xyt-dl-fill';
       panel.appendChild(bar);
       refreshPanelRefs();
+      // v1.0.98: sichtbarer Abbrechen-Knopf. Bricht die laufenden Requests
+      // technisch ab; es wird keine Datei gespeichert.
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'xyt-dl-opt';
+      cancelBtn.style.marginTop = '8px';
+      cancelBtn.textContent = '■ Abbrechen';
+      cancelBtn.addEventListener('click', function (e) {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        cancelDownload();
+        cancelBtn.disabled = true;
+        cancelBtn.textContent = 'Abbrechen …';
+      });
+      panel.appendChild(cancelBtn);
       const hint = document.createElement('div');
       hint.style.cssText = 'color:#aaa;font-size:11px;margin-top:8px;';
       hint.textContent = stream && stream.size ? ('Dateigröße: ' + formatBytes(stream.size) + ' — wird direkt von YouTube geladen.') : 'Download läuft direkt von YouTube.';
@@ -1886,18 +2002,16 @@
         hint.textContent = 'Video + Audio werden geladen und zusammengeführt …';
         const total = (Number(stream.size) || 0) + (Number(mergeAudio.size) || 0);
         let vRecv = 0, aRecv = 0;
+        // v1.0.98: gemeinsame Fortschrittsanzeige. Bei parallelen Transfers ist
+        // die Phase ehrlich „Video+Audio" (keine erfundene Einzelphase).
         function reportMerge() {
-          if (total > 0) {
-            const pct = Math.max(0, Math.min(100, Math.round(((vRecv + aRecv) / total) * 100)));
-            setBarProgress(pct);
-            setStatusText('Download läuft: ' + pct + ' % (' + ((vRecv + aRecv) / 1048576).toFixed(1) + ' / ' + (total / 1048576).toFixed(1) + ' MB)');
-          } else {
-            setStatusText('Download läuft: ' + ((vRecv + aRecv) / 1048576).toFixed(1) + ' MB geladen …');
-          }
+          updateProgress('Video+Audio', vRecv + aRecv, total);
         }
         // Beide Streams PARALLEL laden (jeder mit eigener Chunk-Kette)
-        const vPromise = downloadStreamBytes(stream.url, stream.size, function (received) { vRecv = received; reportMerge(); }, { itag: stream.itag, videoId: videoId, kind: 'video' }, stream);
-        const aPromise = downloadStreamBytes(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); }, { itag: mergeAudio.itag, videoId: videoId, kind: 'audio' }, mergeAudio);
+        const vPromise = downloadStreamBytes(stream.url, stream.size, function (received) { vRecv = received; reportMerge(); }, { itag: stream.itag, videoId: videoId, kind: 'video' }, stream, signal);
+        // Verhindert eine unhandled rejection, wenn das Video zuerst aufgibt.
+        const aPromise = downloadStreamBytes(mergeAudio.url, mergeAudio.size, function (received) { aRecv = received; reportMerge(); }, { itag: mergeAudio.itag, videoId: videoId, kind: 'audio' }, mergeAudio, signal);
+        aPromise.catch(function () { /* wird unten ausgewertet */ });
         const vBytes = await vPromise;
         let aBytes = null;
         try {
@@ -1920,8 +2034,19 @@
           hint.textContent = 'Video gespeichert (ohne Ton — Audiostream war nicht verfügbar).';
           return;
         }
-        setStatusText('Führe Video + Audio zusammen …');
+        setStatusText('Merge: Video + Audio werden zusammengeführt …');
         dbg('[xYT] MERGE-LADEN-FERTIG: Video=' + vBytes.length + ' B, Audio=' + aBytes.length + ' B');
+        // v1.0.98: Größencheck vor dem Muxen — verhindert, dass eine unvollständig
+        // geladene Spur unbemerkt in die Ausgabedatei wandert.
+        if (Number(stream.size) > 0 && Math.abs(vBytes.length - stream.size) / stream.size > 0.01) {
+          const dev = (Math.abs(vBytes.length - stream.size) / stream.size * 100).toFixed(1);
+          console.warn('[xYT] GRÖSSENCHECK Video: erwartet ' + stream.size + ' B, erhalten ' + vBytes.length + ' B (' + dev + ' % Abweichung)');
+          hint.textContent = 'Warnung: Videospur weicht um ' + dev + ' % von der angekündigten Größe ab.';
+        }
+        if (Number(mergeAudio.size) > 0 && Math.abs(aBytes.length - mergeAudio.size) / mergeAudio.size > 0.01) {
+          const dev = (Math.abs(aBytes.length - mergeAudio.size) / mergeAudio.size * 100).toFixed(1);
+          console.warn('[xYT] GRÖSSENCHECK Audio: erwartet ' + mergeAudio.size + ' B, erhalten ' + aBytes.length + ' B (' + dev + ' % Abweichung)');
+        }
         let merged;
         try {
           merged = mergeFmp4(vBytes, aBytes);
@@ -1964,16 +2089,21 @@
         return;
       }
 
-      downloadUrl(stream.url, filename, stream.size);
+      downloadUrl(stream.url, filename, stream.size, signal);
 
       st.textContent = 'Download gestartet: ' + filename;
       st.className = 'xyt-dl-status';
       hint.textContent = 'Datei wird im Browser-Download-Ordner gespeichert.';
     } catch (err) {
+      // v1.0.98: Abbruch ist kein Fehler — eigener Text, kein Fehler-Overlay.
+      const aborted = dlCancelled || (err && err.aborted) || /Abgebrochen/.test(String((err && err.message) || err));
       const st = document.createElement('div');
-      st.className = 'xyt-dl-status err';
-      st.textContent = 'Fehler: ' + (err && err.message ? err.message : String(err));
+      st.className = 'xyt-dl-status' + (aborted ? '' : ' err');
+      st.textContent = aborted
+        ? 'Abgebrochen — keine Datei gespeichert.'
+        : ('Fehler: ' + (err && err.message ? err.message : String(err)));
       panel.appendChild(st);
+      if (aborted) setBarProgress(0);
       // „Erneut versuchen"-Button
       if (lastJob) {
         const retry = document.createElement('button');
@@ -1990,6 +2120,7 @@
       }
     } finally {
       running = false;
+      dlAbort = null;
     }
   }
 

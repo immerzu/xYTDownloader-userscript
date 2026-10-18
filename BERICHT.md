@@ -1356,3 +1356,38 @@ Metablock enthält jetzt dauerhaft:
 - **Greasy Fork:** Webhook-Übernahme 2026-10-17T17:45:20Z (2 s nach Push) — GF-API bestätigt `version: 1.0.97`, `code_size: 104237` (LF-normalisiert). `.meta.js` liefert `@version 1.0.97` (Content-Type `text/x-userscript-meta`).
 - **Quellcode-Abgleich:** `.user.js` (104.233 B) = Arbeitsdatei; einzige Abweichung sind **4 Whitespace-Bytes** in den beiden Update-Zeilen (GF schreibt `// @downloadURL https://…` mit einem Leerzeichen, lokal sind es zwei bzw. vier). GF **dupliziert** die Zeilen nicht — es sind genau 2 vorhanden.
 - **Verzögerung beobachtet:** Der erste `user.js`-Abruf direkt nach dem Push lieferte noch v1.0.95 (`Last-Modified 17:26:41`, ETag `6ad3afd1-6be8`); 17 s später war v1.0.97 verfügbar (`Last-Modified 17:45:20`). Die `.meta.js` war bereits aktuell — das erklärt „Update gefunden, aber alte Datei geladen" als reines CDN-Timing.
+
+## 62. v1.0.98 → v1.0.100 — Qualität, Abbruch, Fortschritt, Wiederaufnahme, Tests
+
+**Stand:** 2026-10-18. v1.0.98 wurde nie veröffentlicht; v1.0.99 (Diagnose-Badge) ebenfalls nicht. **v1.0.100 ist die finale Fassung** = v1.0.99 ohne Badge, mit korrigiertem Metablock.
+
+### Änderungen (v1.0.98)
+- **Qualität/Merge:** `pickMergeAudio` liefert **nur noch MP4-Audio** (v1.0.97 fiel auf beliebiges Audio zurück → Merge scheiterte erst nach dem Download). Größencheck Video/Audio vor dem Muxen (>1 % Abweichung → Warnung im Panel + Log).
+- **Abbruch:** eigener `AbortController` je Download, Signal an alle `fetchRangeChunk` (init + Chunks), „■ Abbrechen"-Button, Status „Abgebrochen — keine Datei gespeichert", kein `GM_download`-Fallback nach Abbruch, `dlAbort` im `finally` freigegeben. Getrennt vom Formatanfrage-Abbruch (`playerAbort`) — SPA-Wechsel bricht keinen Download ab.
+- **Fortschritt:** `updateProgress(phase, received, total)` — Phase · % · geladen/gesamt · Geschwindigkeit (2-s-Fenster) · Restzeit, Drossel 250 ms; nach Abbruch keine Updates mehr (`dlCancelled`-Guard).
+- **Qualitätsauswahl:** Button-Text `Auflösung · Container/Codec · Größe · Tonstatus` (`mit Ton` / `+ Ton` / `nur Video`), Tooltip mit MIME + Merge-Partner.
+
+### Änderungen (v1.0.99 / v1.0.100)
+- **Metablock-Fehler behoben:** In v1.0.98 lagen Kommentarzeilen **zwischen** den @-Einträgen; Tampermonkey übernahm `@downloadURL`/`@updateURL` dadurch nicht (im Dashboard fehlte der Update-Pfeil). Die Update-Zeilen stehen jetzt direkt nach `@license`, Kommentare dahinter.
+- v1.0.99 zusätzlich mit Diagnose-Badge (nur Testhilfe). **v1.0.100 entfernt es wieder** (0 Reste geprüft).
+
+### Prüfungen (Chromium/Playwright, echtes YouTube)
+| Test | Ergebnis |
+|---|---|
+| 480p-Merge | H.264 854×480 + AAC 44,1 kHz 2 ch, 17.551.943 B, 213 s (ffprobe) |
+| 1440p-Merge | **AV1 2560×1440** + AAC 2 ch, 125.616.701 B; ftyp, 2 traks, moov+moof |
+| 2160p-Merge | **AV1 3840×2160** + AAC 2 ch, 243.783.067 B |
+| Abbruch 1080p bei 45 % (36/80,5 MB) | Status „abgebrochen", **kein** Download-Event, Retry vorhanden |
+| Neustart nach Abbruch (360p) | erfolgreich, Datei gespeichert |
+| Timeout | nach 15 s Meldung + „↻ Erneut versuchen" |
+| SPA A→B→C | Button je in Leiste, kein Overlay, 1 Button, Panel öffnet |
+| Fortschritt | 1080p 23,4 MB/s · Rest 2 s; 1440p 20,3 MB/s; 2160p 23,3 MB/s — plausibel zu den Dateigrößen |
+| v1.0.100 unter echtem Tampermonkey (Datei-Import) | Button `⬇ Download` vorhanden und sichtbar |
+
+### Umgebungsbefunde
+- **VPN ist die Absturzursache:** Mit aktivem VPN starb der Tab bei jedem Merge — reproduzierbar mit v1.0.93, v1.0.97 und v1.0.98. Ohne VPN laufen alle Merges.
+- **Private Network Access:** Chrome 153 blockt `fetch` zu `127.0.0.1` aus HTTPS-Seiten (`Permission was denied … loopback`) — Injektion im Test daher über Playwrights `page.request`.
+- **Nutzerseitig:** In Chrome Portable war der Tampermonkey-Websitezugriff auf „Bei Klick" gestellt → „Kein Userscript gestartet". Nach Umstellung auf „Auf allen Websites" erschien der Button.
+
+### Build
+`Ausgabe\xyt-downloader-v1.0.100.user.js`, 113.654 B, 2260 Zeilen, SHA256 `04ade84a0314702d3644401bfbb31c25541e30015b148d7737a5fae703f7042c`, `node --check` OK, `fc /b` identisch. v1.0.98 (`64f9ad24…`) und v1.0.99 (`50cde809…`) bleiben unangetastet.
