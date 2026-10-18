@@ -2,14 +2,14 @@
 
 ## Kerndaten
 - **Projekt-Root:** `F:\001_Coding_Projekte\xYTDownloader\`
-- **Arbeitsdatei:** `xyt-downloader.user.js` (Projektstamm, 1895 Zeilen)
+- **Arbeitsdatei:** `xyt-downloader.user.js` (Projektstamm, 2260 Zeilen)
 - **Builds:** `Ausgabe\xyt-downloader-v<version>.user.js`
 - **Git-Repo:** `immerzu/xYTDownloader-userscript` (Branch main, GitHub)
 - **Greasy Fork:** Skript-ID 589972, Account `immerzu` (ID 1629833)
 - **Webhook/Sync:** Push → Greasy Fork aktualisiert automatisch (Sync-Quelle `https://raw.githubusercontent.com/immerzu/xYTDownloader-userscript/main/xyt-downloader.user.js`; Payload `/users/1629833-immerzu/webhook`, Event push). **Verifiziert:** v1.0.76 (+19 s), v1.0.89 (14:32:59Z), **v1.0.91 (2026-09-19T07:42:48Z, ~20 s nach Push `bc997e3`)**. **Aber nicht blind warten — messen** (`Invoke-RestMethod https://greasyfork.org/scripts/589972.json` → `version`, `code_updated_at`); bei Verzug Admin-Trigger (`gf-admin-sync.mjs`; belegt 2026-09-14: ~4 min Verzug). Sync übernimmt Roh-Code (validiert nicht); harte Grenze bleibt `@description` ≤ 500 Zeichen.
 - **Install-Link:** https://update.greasyfork.org/scripts/589972/xYTDownloader.user.js
 
-## Aktueller Stand (v1.0.97)
+## Aktueller Stand (v1.0.100)
 - **v1.0.80 (2026-09-01):** Fix "LOGIN_REQUIRED — Sign in to confirm you're not a bot" — `fetchAndroidVrPlayer` (Player-Request) nutzt jetzt Seiten-`fetch` statt `GM_xmlhttpRequest` (Seiten-Kontext trägt die Browser-Session, umgeht YouTubes Bot-Prüfung; verifiziert: status OK, 27 adaptiveFormats). GF live + GitHub Release v1.0.80.
 - **v1.0.88 (2026-09-03):** Aufräumarbeit/Rollback auf den einfachen VISIONOS-Stand (v1.0.81-Basis) — die unnötigen Web-Player-Umbau-Experimente v1.0.85–87 (`getPlayerApiResponse`/`wholeFile`) wurden verworfen (Auslöser war ein aktiver VPN, nicht der Code; vgl. Erkenntnisse 0/1b).
 - **v1.0.89 (2026-09-05):** `@description:de` + `@name:de` entfernt — GF-Kurzbeschreibung zeigt einheitlich DE/EN/RU statt nur DE (GF live v1.0.89, Webhook-Übernahme 14:32:59Z). Danach nachgezogen: `MY_VERSION`-Abgleich 1.0.88 → 1.0.89, erster v1.0.89-Build + Release-Asset (BERICHT §54/§55).
@@ -21,7 +21,11 @@
 - **v1.0.95 (2026-10-17, im Firefox verifiziert):** **Regressionen aus v1.0.94 behoben** — `getBar()` bevorzugt die Leiste in der sichtbaren `ytd-watch-metadata` (alte Watch-Container beim SPA-Wechsel waren sonst „gültiger" Anker → Button unsichtbar/unbedienbar); Button wird bei Video-Wechsel aus dem DOM gelöst; Panel-Toggle nur bei sichtbarem Panel. Timeout/Retry/Stale bleiben. BERICHT §60. GF live v1.0.95 (Übernahme 2026-10-17T17:26:41Z), GitHub-Release + Asset `xyt-downloader-v1.0.95.user.js`.
 - **v1.0.96 (2026-10-17, getestet, NICHT veröffentlicht):** `@updateURL` + `@downloadURL` fest im Metablock (vorher fehlten sie im GitHub-Quellcode → lokal installierte Fassungen fanden keine Updates). In v1.0.97 unverändert übernommen.
 - **v1.0.97 (2026-10-17):** identisch mit v1.0.96, nur Versionsnummer angehoben — erste offizielle Fassung mit Update-Adressen. BERICHT §61. GF live v1.0.97 (Übernahme 2026-10-17T17:45:20Z), Asset `xyt-downloader-v1.0.97.user.js`.
-- **Download-Client:** VISIONOS statt ANDROID_VR (Name 1.02, `RealityDevice17,1`) — ANDROID_VR lieferte 403/UNPLAYABLE ohne POT-Token (`fetchAndroidVrPlayer()`, Z. 849; **kein Timeout** — s. Offene Punkte)
+- **v1.0.98 (2026-10-18, NICHT veröffentlicht, im Archiv):** Qualität/Merge — `pickMergeAudio` liefert **nur MP4-Audio** (vorher Fallback auf WebM/Opus → Merge scheiterte erst nach dem Download), Größencheck Video/Audio vor dem Muxen (>1 % → Warnung). **Abbruch** — eigener `AbortController` je Download (`dlAbort`/`dlCancelled`), Signal an alle `fetchRangeChunk`, „■ Abbrechen"-Button, Status „Abgebrochen — keine Datei gespeichert", kein `GM_download`-Fallback nach Abbruch; getrennt vom Formatanfrage-Abbruch (`playerAbort`) → SPA-Wechsel killt keinen Download. **Fortschritt** — `updateProgress(phase, received, total)`: Phase · % · MB · MB/s (2-s-Fenster) · Restzeit, Drossel 250 ms, `dlCancelled`-Guard. **Auswahl** — Button-Text `Auflösung · Container/Codec · Größe · Tonstatus`.
+- **v1.0.99 (2026-10-18, NICHT veröffentlicht):** **Metablock-Fehler aus v1.0.98 behoben** — Kommentarzeilen zwischen den @-Einträgen verhinderten, dass Tampermonkey `@downloadURL`/`@updateURL` übernimmt (Update-Pfeil fehlte im Dashboard). Update-Zeilen jetzt direkt nach `@license`, Kommentare dahinter. Zusätzlich Diagnose-Badge (nur Testhilfe).
+- **v1.0.100 (2026-10-18, VERÖFFENTLICHT):** = v1.0.99 ohne Badge (0 Reste). BERICHT §62. GF live (Übernahme 2026-10-18T02:40:39Z, `code_size` 111394), GitHub-Release + Asset `xyt-downloader-v1.0.100.user.js` (113.654 B, SHA-256 `04ade84a…`).
+- **Ausgabe-Ordner aufgeräumt (2026-10-18):** alle Fassungen v1.0.49–v1.0.99 + `xyt-downloader-TEST-v1.0.92-20261017.user.js` liegen in `Ausgabe\Archiv\` (23 Dateien, SHA-256 vor/nach Verschieben gleich); im Hauptordner steht **nur** `xyt-downloader-v1.0.100.user.js`. Nichts gelöscht.
+- **Download-Client:** VISIONOS statt ANDROID_VR (Name 1.02, `RealityDevice17,1`) — ANDROID_VR lieferte 403/UNPLAYABLE ohne POT-Token (`fetchAndroidVrPlayer()`, Z. 849; **seit v1.0.94 mit 15-s-Timeout** via `AbortController`)
 - **Download-Fetches:** `&range=`-URL-Parameter statt Range-Header, init-Segment (ftyp+moov) separat laden. **Seit v1.0.91 ohne Custom-Header** (Referer/UA/Accept-Encoding entfernt — der UA-Header löste in Firefox einen CORS-Preflight aus, Erkenntnis 1e)
 - **Container:** MP4-Präferenz in `codecRank()` (video/mp4 vor webm) — WebM/VP9 itag 313/271 ist EBML und nicht mit `mergeFmp4` muxbar
 - **Metablock (GF-Validierung, WICHTIG):**
@@ -87,6 +91,9 @@
 - v1.0.95: Regressionen aus v1.0.94 behoben (Leisten-Anker in sichtbarer `ytd-watch-metadata`, Button beim Video-Wechsel lösen, Panel-Toggle nur bei Sichtbarkeit)
 - v1.0.96: Update-Adressen im Metablock — getestet, nicht veröffentlicht
 - v1.0.97: identisch mit v1.0.96, veröffentlicht (Update-Erkennung für lokale Installationen)
+- v1.0.98: Merge nur mit MP4-Audio, Abbruch per AbortController, Fortschritt mit MB/s + Restzeit, Codec/Ton im Panel — nicht veröffentlicht
+- v1.0.99: Metablock korrigiert (Update-Zeilen direkt nach @license) + Diagnose-Badge — nicht veröffentlicht
+- v1.0.100: final = v1.0.99 ohne Badge — **veröffentlicht 2026-10-18**
 - v1.0.55–67: **Alles Experimente — NICHT verwenden**
 
 ## Build-Regeln (bindend)
@@ -106,12 +113,15 @@
 - **GitHub:** `gh` + API funktionieren; **direkte Downloads von github.com-Release-Assets sind blockiert** (daran scheiterten geckodriver-Installationen).
 - **GF-Verifikation ohne Browser:** `https://api.greasyfork.org/scripts/589972.json` (ein `web_fetch` auf `greasyfork.org/…json` scheitert an der Umleitung zu `api.greasyfork.org` → Adresse direkt angeben) → `version`, `code_updated_at`, `locale`, `description`; Sprachsuche `/de|en|ru/scripts?q=xytdownloader`.
 - **GF-Diskussionsantworten:** `C:\Users\lolo\.dsh\browser-tools\gf-reply.mjs` — `diag --url <thread>` (read-only Struktur) · `reply --url <thread> --file <text> [--dry-run]`. **Login-Erkennung NICHT über den Header-Text:** die `/de/`-Diskussionsseite zeigt „Anmelden" auch im eingeloggten Zustand (Text-Check liefert falsches `LOGIN_REQUIRED`); verlässlich ist die vorhandene Antwort-Textarea `textarea[name="comment[text]"]` (Formular-Action `…/comments#post-reply`, Markdown-Radio `comment[text_markup]`, Submit „Antworten"). Erste Bewährungsprobe: zwei russische Antworten am 2026-09-06/07 erfolgreich gepostet (Kommentare #666182, #666235).
+- **Testbrowser (2026-10-18):** Chrome for Testing **153.0.8010.12**, Profil `C:\Users\lolo\AppData\Local\Google\Chrome for Testing\User Data`, Config `C:\Users\lolo\.dsh\playwright-mcp-config.json` (Tampermonkey 5.5.1 + Better DeepSeek + AdGuard; **kein** `--restore-last-session`). Für A/B-Tests frisches Profil `C:\Users\lolo\AppData\Local\Temp\xyt-fresh-profile` möglich (Config-Backups `*.bak-vor-testprofil-20261017`, `*.bak-vor-adblock-20261017`).
+- **ffprobe/ffmpeg sind installiert** — Medienprüfung gemergter Dateien: `ffprobe -v error -show_entries stream=index,codec_type,codec_name,width,height,channels -of default=noprint_wrappers=1 <datei>`.
+- **Datei-Upload im Playwright-Browser** ist auf die Allowed Roots beschränkt (`F:\001_Coding_Projekte\!Wichtiges\DSH_Update_Start_Dateien` + `\.playwright-mcp`) — Userscript-Import: Datei vorher dorthin kopieren.
 - **Diagnose-Tools (browser-tools):** `yt-stream-probe.mjs` (holt echte googlevideo-URL), `yt-cors-probe.mjs` (misst OPTIONS-Preflight-Antworten), `ff-preflight-probe.mjs` (echter Firefox-Test — braucht geckodriver, derzeit blockiert).
 
 ## Offene Punkte / Nutzer-Feedback (Stand 2026-09-19)
 1. **GF-Diskussion 339057** (Nutzer „Spok", 06./07.09.2026, russisch): Mobil (Android 5.1 + Via) schwarzer Player → Ursache ist die Umgebung (YouTube/WebView kann dort nicht abspielen; das Skript greift nicht in die Wiedergabe ein). Desktop „Download startet nicht" → **seit v1.0.91 ist die Firefox-CORS-Ursache (Erkenntnis 1e) die wahrscheinlichste Erklärung**. Zwei russische Antworten gepostet; offen: Spoks Angaben (Installationsweg in Via, Panel-Verhalten, `[xYT]`-Logs) und ggf. eine Via-kompatible Anpassung.
 2. **GM-lose Umgebungen (Via-eigene Skript-Engine?):** `downloadUrl` hat ein obsoletes `typeof GM_xmlhttpRequest`-Gate (Z. 354) → ohne GM-APIs landen progressive Downloads still in `fallbackDownload` (GM_download/`window.open`) statt in den nativen fetch-Chunks. Kandidat für einen Via-kompatiblen Fix (Gate entfernen).
-3. **Kein Timeout in `fetchAndroidVrPlayer`** (Z. 849): Ein hängender Player-Request lässt das Panel dauerhaft auf „Formate werden geladen …" stehen.
-4. **Merge-Pfad ohne Status-0-Fallback** (`downloadStreamBytes`, Z. 526): Seit v1.0.91 wird die Ursache geloggt, aber anders als bei `downloadUrl` gibt es keinen Notausgang (nur 403/416 → URL-Refresh).
+3. ~~Kein Timeout in `fetchAndroidVrPlayer`~~ — **erledigt seit v1.0.94** (15 s, Meldung + Retry, im Test nach 15 s bestätigt).
+4. ~~Merge-Pfad ohne Status-0-Fallback~~ — **erledigt seit v1.0.93** (`retryChunk`/`isTransientStatus`, 4 Versuche 1/2/4/8 s, bei 0/429 frische URL); bei endgültigem Merge-Fehler werden Video und Audio getrennt gespeichert (B1).
 
 **Versionszweig (Nutzeranweisung 2026-10-18):** Naechste Fassung nach v1.0.100 = **1.1.00**, danach 1.1.01 ff. — nicht mehr 1.0.xx.
