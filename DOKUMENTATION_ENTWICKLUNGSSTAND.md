@@ -1,5 +1,7 @@
 # xYTDownloader — Vollständige Entwicklungsdokumentation (Stand 2026-08-12, v1.0.70)
 
+> **HISTORISCH — nicht fortgeschrieben.** Diese Datei beschreibt den Stand **v1.0.70** (2026-08-12). Die Projektstruktur unten (9 Builds, 1972 Zeilen) gilt dafür, nicht für den heutigen Stand. **Aktuell:** `AGENTS.md` (Architektur, Build-Regeln, Veröffentlichung) und `BERICHT.md` (§63 = v1.1.00–v1.1.16, §64 = v1.1.17); Detailwissen in `memory\FACT.md`. Die Datei bleibt als Zeitdokument erhalten.
+>
 > Zweck: Ist-Zustand-Dokumentation des Projekts (v1.0.70). Synchronisiert mit BERICHT.md (§1–§34) und den Builds in `Ausgabe\`.
 > Erstellt von: Reasonix-Agent (Arbeitsprojekt des Nutzers Ede).
 

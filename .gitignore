@@ -30,3 +30,6 @@ Youtube Tools All in one local download mp3 mp4 HIGT QUALITY return dislikes and
 *.bak
 *.bak-*
 *.log
+
+# Übergabedokumente (Nutzer-/Agenten-Notizen, bewusst NICHT im Repo; local only)
+memory/UEBERGABE*.md

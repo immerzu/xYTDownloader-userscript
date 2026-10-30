@@ -1396,3 +1396,55 @@ Metablock enthält jetzt dauerhaft:
 - **GitHub:** Commit `84dc029`, Tag `v1.0.100` + Release mit Asset `xyt-downloader-v1.0.100.user.js` (113.654 Bytes, sha256 `04ade84a0314702d3644401bfbb31c25541e30015b148d7737a5fae703f7042c`).
 - **Greasy Fork:** Übernahme 2026-10-18T02:40:39Z (18 s nach Push) — GF-API `version: 1.0.100`, `code_size: 111394`. Quellcode-Abgleich: 2260 Zeilen, **4 Abweichungen** = nur Whitespace in `@downloadURL`/`@updateURL` (GF normalisiert auf ein Leerzeichen), sonst identisch.
 - v1.0.98 und v1.0.99 wurden **nicht** veröffentlicht (nur lokal, Artefakte bleiben erhalten).
+
+## 63. v1.1.00 → v1.1.16 — Streaming, Speichergrenze, OPFS (2026-10-18)
+
+**Thema:** Der 1.1-Zweig behebt die 2-GB-Grenze des Browsers für große 4K-Dateien und stabilisiert den Downloadpfad. Alle Fassungen sind lokal in `Ausgabe\`; veröffentlicht sind **v1.1.15** und **v1.1.16**.
+
+**Kernpunkte (Details in `memory\FACT.md`):**
+- **v1.1.00–v1.1.06:** Metablock/Beschreibungen, Client- und Stream-Diagnose, Button-Position.
+- **v1.1.07:** vollständige HTTP-206-Prüfung (Start, Ende, Gesamtgröße, Länge) überall.
+- **v1.1.08:** DASH-206, offene Promises (Probe-Abbruch, Fallback), parallele Transfers, kein URL-Leak im Log.
+- **v1.1.09/10:** Shorts-Regression behoben — HTTP 200 kann *Gesamtdatei* oder *exakt angeforderte Range-Länge* sein.
+- **v1.1.11:** Speicher (Video-Segmente als Views, kein `parts`-Array).
+- **v1.1.12:** `MAX_BUFFER_BYTES` (1,9 GB) fängt das ArrayBuffer-Limit **vor** dem Download ab.
+- **v1.1.13:** Merge liefert **Blob** (Gesamtdatei > 2 GB), Abbrechen reagiert immer.
+- **v1.1.14:** **Streaming-Merge über OPFS** (Init → moov-Neubau → chunkweises Parsen mit Carry-Parser → Datei); Bugfix `>= moov.end` (erstes `moof` fehlte ohne `sidx`).
+- **v1.1.15:** keine `.crdownload`-Reste (kein `revokeObjectURL` > 100 MB); OPFS-Aufräumen.
+- **v1.1.16:** tab-sichere OPFS-Verwaltung — eindeutige IDs, **Web-Lock**-Schutz aktiver Merges, Cleanup nur bei freiem Lock + Alter > 30 min.
+
+**Releases (belegt):**
+- **v1.1.15:** GitHub `90ea02e`, Tag `v1.1.15`, Release-Asset 143.833 B, SHA-256 `475805ff…`; GF-Übernahme 2026-10-18 07:05:00 (lokal) — Sync automatisch über `main`.
+- **v1.1.16:** GitHub `3fcbb14`, Tag `v1.1.16`, Release-Asset 147.019 B, SHA-256 `b8ffbbfb…`; GF-Übernahme 2026-10-18 07:16:35 (lokal). Update-Adresse lieferte nach kurzem CDN-Delay 1.1.16.
+- **v1.1.00–v1.1.14:** nicht veröffentlicht (nur lokal), Artefakte bleiben erhalten.
+
+**Tests:** Syntax je Build (`node --check`); byte-identische Merge-Ausgabe v1.1.10 ↔ v1.1.14/16 (42.480 B, `f5dabce8…`); Streaming 8 MB / 2 Chunks identisch; OPFS-Lock-Test (aktive Datei bleibt, verwaiste wird entfernt); Fehlerfall 404 ohne OPFS-Reste. Echte 2,85-GB-Downloads: Nutzertest in Yandex (v1.1.15 erfolgreich).
+
+## 64. v1.1.17 — gezielte Härtung (veröffentlicht 2026-10-22)
+
+**Stand:** 2026-10-22. Range-Antworten werden für RAM, OPFS und Init-Segmente gemeinsam auf Status, Start, Ende, Länge und Gesamtgröße geprüft; kleine Range-Antworten werden bereits beim Einlesen begrenzt. Die Größenprobe verwirft ihren Body immer und beginnt ohne gültigen `Content-Range` erneut bei Byte 0. OPFS erhielt Chunk-Timeout, begrenzte Retries, URL-Refresh, Quota-/Ausgabeprüfung und sichere Verwaltung mehrerer Dateien; der RAM-Pfad begrenzt Eingaben plus Ausgabedatei. MP4-Boxfehler und fehlendes `tfhd` brechen eindeutig ab. Signierte URLs liegen nicht mehr im DOM oder in Diagnose-Logs; Medienaufrufe verlangen HTTPS auf `googlevideo.com`, `@match` ist auf YouTube per HTTPS begrenzt. Die bestehende VISIONOS-Konfiguration samt `signatureTimestamp` blieb erhalten; Player-Antworten prüfen Status, Typ und Größe.
+
+**Prüfungen:** `node --check` und `git diff --check` OK; 33 Headless-Chromium-Fälle bestanden (206/200, Probe ohne `Content-Range`, Übergröße, 429/503, Timeout, Abbruch, OPFS-Refresh/Quota/Cleanup, Ausgabegröße, MP4/`tfhd`, URL-/Player-Prüfung). Statische URL-/Metablockprüfung bestanden. Vorhandene 360p-/480p-/720p-Referenzdateien sind per `ffprobe` als H.264/AAC mit 213,09 s lesbar. Der 2,85-GB-Test wurde gemäß Auftrag nicht wiederholt.
+
+**Build:** `Ausgabe\xyt-downloader-v1.1.17.user.js`, 157.639 B, MD5 `378f973f62f4d9c71afd5ff5f6fec3cd`, SHA-256 `4a6c0e38143d76d68dbd921ee25b86279738d932f4f1bbd23c9e98095c8c6096`; bytegleich zur Arbeitsdatei. v1.1.16 blieb unverändert (`b8ffbbfb77a662195afe81cede7d06c4ae558453c660603cca3cdc6aa9a7baeb`).
+
+**Release (2026-10-22):** Commit `f4cb9ab`, Tag/Release `v1.1.17`; GitHub-Asset erneut heruntergeladen und bytegleich bestätigt. Greasy Fork übernahm automatisch (`version: 1.1.17`, `code_updated_at: 2026-10-22T10:12:47Z`, Locale `en`); Installationsdatei nach Metablock-/Zeilenendungsnormalisierung ohne Codeabweichung, DE-/EN-/RU-Suche jeweils mit sprachrichtiger Beschreibung. Der separate `.meta.js`-CDN-Endpunkt antwortete bei zwei Abschlussprüfungen vorübergehend mit HTTP 503; API und `.user.js` waren aktuell.
+
+## 65. Projektbereinigung und Dokumentationsabgleich (2026-10-30)
+
+**Keine Code-/Versionsänderung.** Arbeitsdatei `xyt-downloader.user.js` bleibt v1.1.17 (SHA-256 `4a6c0e38143d76d68dbd921ee25b86279738d932f4f1bbd23c9e98095c8c6096`); Build `Ausgabe\xyt-downloader-v1.1.17.user.js` unverändert.
+
+**Bereinigt (`.playwright-mcp\`, gitignored):** 109 veraltete Testartefakte gelöscht (435,4 MB) — 103 `page-*.yml`-Snapshots (2,17 MB), drei erzeugte v1.1.17-Vergleichskopien (`github-asset-`, `raw-`, `gf-*.user.js`) und die Testdownloads 1080p/1440p/2160p (433 MB). **Bewahrt:** 360p/480p/720p-Referenzdateien (in §64 als ffprobe-Referenz genannt), `console-*.log` (Rohbelege der Messungen), CRX-Installer, `.reasonix\`, `xyt-button-screenshot.png`.
+
+**Dokumentation aktualisiert:**
+- `AGENTS.md`: Architektur-Zeilen und Funktionssignaturen auf v1.1.17 gezogen; Veröffentlichungsstand v1.1.17 mit Belegen; Release-Lage präzisiert (belegbar ab v1.0.88).
+- `memory/FACT.md`: Kopf/Stand v1.1.17, Zeilenanzahl 3009, v1.1.17-Eintrag, OPFS/Streaming in der Architektur, Widerspruch in Erkenntnis 1l kenntlich gemacht.
+- `README.md`: Version 1.1.17, Funktionsumfang (Fortschritt/Abbruch/Retry, OPFS-Streaming, Range-Prüfung), Doku-Verweise (DOKUMENTATION/ANALYSE als historisch).
+- `DOKUMENTATION_ENTWICKLUNGSSTAND.md`: Verweis auf §63–§64.
+- `memory/HANDOVER_v1.0.91.md`: als historisch markiert, Einstieg auf v1.1.17 verwiesen.
+- `description.md`: VISIONOS statt ANDROID_VR (EN/DE/RU).
+- `.gitignore`: Übergabedokumente `memory/UEBERGABE*.md` bleiben lokal.
+
+**Prüfungen:** `node --check` (Exit 0), `git diff --check`, Abgleich der Zeilenangaben gegen die Funktionsliste des Scripts, Installationsdatei/Build-Hash unverändert.
+
+**Offen/bewusst unverändert:** Installations-Kopfkommentar im Script nennt noch `ANDROID_VR` und nur /watch + /shorts; eine Korrektur würde eine neue Version samt Release erfordern (nicht Teil dieser Bereinigung).

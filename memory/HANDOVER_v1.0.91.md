@@ -1,6 +1,6 @@
-# HANDOVER — xYTDownloader (Stand: 2026-09-19, v1.0.91)
+# HANDOVER — xYTDownloader (Stand: 2026-09-19, v1.0.91) — HISTORISCH
 
-> Aktueller Einstieg. Das ältere `HANDOVER_v1.0.70.md` ist **historisch** (Stand 2026-08-09).
+> **HISTORISCH (v1.0.91).** Aktueller Stand: **v1.1.17** (2026-10-22) — Einstieg über `AGENTS.md`, `memory\FACT.md` und `BERICHT.md` §64. Dieses Dokument beschreibt die Sitzung vom 2026-09-19 und wird nicht fortgeschrieben. Das ältere `HANDOVER_v1.0.70.md` ist ebenfalls historisch.
 
 ## 1. Wo das Projekt steht
 - **Arbeitsstand:** `xyt-downloader.user.js` = **v1.0.91** (1895 Zeilen), `@version` und `MY_VERSION` (Z. 69) synchron.
