@@ -1448,3 +1448,4 @@ Metablock enthält jetzt dauerhaft:
 **Prüfungen:** `node --check` (Exit 0), `git diff --check`, Abgleich der Zeilenangaben gegen die Funktionsliste des Scripts, Installationsdatei/Build-Hash unverändert.
 
 **Offen/bewusst unverändert:** Installations-Kopfkommentar im Script nennt noch `ANDROID_VR` und nur /watch + /shorts; eine Korrektur würde eine neue Version samt Release erfordern (nicht Teil dieser Bereinigung).
+**Commit:** `0387dfc` (Doku-Abgleich und Bereinigung; Code/Build unverändert v1.1.17).
