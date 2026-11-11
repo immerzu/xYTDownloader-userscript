@@ -1463,3 +1463,5 @@ Metablock enthält jetzt dauerhaft:
 **Prüfungen:** `node --check` Exit 0; `fc /b` Build = Arbeitsdatei; E2E im echten Chrome (TM v1.1.18, Dashboard zeigt „xYTDownloader 1.1.18 · 158 KB"): `ztvlZfx51FQ` 360p heruntergeladen, 13.473.326 B, `ffprobe` H.264 640×360 + AAC.
 
 **Build:** `Ausgabe\xyt-downloader-v1.1.18.user.js`, 158.870 B, MD5 `e3b93372052e593c5ead500604bbfdfa`, SHA-256 `28baa391a82387376ea31f2f691e8984c5fb87fe4f254d454a81d0b5a2eb9754`.
+
+**Release (2026-11-11):** Commit `d5e3c57`, Tag/Release `v1.1.18` mit Asset; GF übernahm automatisch (`code_updated_at` 2026-11-11T06:01:00Z, `code_size` 155842); Installationsdatei nach Entfernen der beiden Update-Zeilen zeilengleich (3026/3026, 0 Abweichungen).
