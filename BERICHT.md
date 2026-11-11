@@ -1449,3 +1449,17 @@ Metablock enthält jetzt dauerhaft:
 
 **Offen/bewusst unverändert:** Installations-Kopfkommentar im Script nennt noch `ANDROID_VR` und nur /watch + /shorts; eine Korrektur würde eine neue Version samt Release erfordern (nicht Teil dieser Bereinigung).
 **Commit:** `0387dfc` (Doku-Abgleich und Bereinigung; Code/Build unverändert v1.1.17).
+
+## 66. v1.1.18 — Range-Abruf mit HTTP-Range-Header als Fallback (2026-11-11)
+
+**Symptom:** Download von `ztvlZfx51FQ` brach ab mit „Download abgebrochen nach 4 Netzwerkversuchen (Status 0) — Failed to fetch"; die Formatanfrage war in Ordnung (Panel zeigte 1080p/720p/480p/360p).
+
+**Ursache (im echten Chrome mit TM v1.1.17 belegt):** googlevideo beantwortet einzelne `&range=`-Abrufe mit **HTTP 302** (`cms_redirect=yes`, Umleitung auf einen anderen `rr`-Host); der Browser folgt dem Redirect und bricht mit `net::ERR_FAILED` ab. Der Fehler ist sporadisch: Lauf 1 scheiterte nach 8 MB, Lauf 2 (360p) und Rick Astley (480p) liefen durch; ohne Browser (Node) lieferten dieselben Bereiche 200/206. Kein Video-, VPN-, Adblock- oder Skriptfehler.
+
+**Änderung:** `fetchRangeChunk` (Z. 539, Region `#region fetchRangeChunk`) wiederholt bei einem Netzwerkfehler (Status 0) genau **einmal** mit `Range`-Header und ohne `range`-Query-Parameter. Abbruch, Timeout und „Antwort zu groß" lösen keinen Fallback aus; Erfolgsfall (Query-Parameter, 200/206) und `validateRangeResponse` bleiben unverändert.
+
+**Regressionstest:** `tests\test-range-fallback.mjs` (Node, Exit 0) — 16 Prüfungen: Erfolgsfall (1 Request, `range`-Parameter), Status-0-Fallback (2 Requests, 2. ohne Parameter, mit `Range`-Header), beide Strategien scheitern (genau 2 Requests, kein Endlos-Retry), Abbruch vor dem Start (0 Requests), Offset-Range.
+
+**Prüfungen:** `node --check` Exit 0; `fc /b` Build = Arbeitsdatei; E2E im echten Chrome (TM v1.1.18, Dashboard zeigt „xYTDownloader 1.1.18 · 158 KB"): `ztvlZfx51FQ` 360p heruntergeladen, 13.473.326 B, `ffprobe` H.264 640×360 + AAC.
+
+**Build:** `Ausgabe\xyt-downloader-v1.1.18.user.js`, 158.870 B, MD5 `e3b93372052e593c5ead500604bbfdfa`, SHA-256 `28baa391a82387376ea31f2f691e8984c5fb87fe4f254d454a81d0b5a2eb9754`.

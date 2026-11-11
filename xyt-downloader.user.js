@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         xYTDownloader
 // @namespace    local:xyt-downloader
-// @version      1.1.17
+// @version      1.1.18
 // @description One-click YouTube downloader for /watch, /shorts and /live: up to 4K with audio, DASH merge, live progress, cancel and retry. No third-party download services; direct VISIONOS client.
 // @description:de YouTube-Downloader für /watch, /shorts und /live: bis 4K mit Ton, DASH-Merge, Live-Fortschritt, Abbrechen und erneut versuchen. Keine Download-Dienste von Drittanbietern, direkter VISIONOS-Client.
 // @description:ru Скачивание YouTube для /watch, /shorts и /live: до 4K со звуком, объединение DASH, прогресс в реальном времени, отмена и повтор. Без сторонних сервисов загрузки, прямой клиент VISIONOS.
@@ -66,7 +66,7 @@
   // Wenn Ede KEINE dieser Zeilen sieht, läuft das Script in Tampermonkey gar
   // nicht (Metablock-Problem, falsche Domain, deaktiviert).
   // =========================================================================
-  const MY_VERSION = '1.1.17';
+  const MY_VERSION = '1.1.18';
   console.log('[xYT] Script geladen v' + MY_VERSION);
   console.log('[xYT] Seite:', window.location.origin + window.location.pathname);
   console.log('[xYT] Instanz-Flag:', window.__xytDownloaderInstalled__);
@@ -536,12 +536,23 @@
   // Stream Audio itag 140 und Video itag 401 komplett per `&range=` +
   // `&ratebypass=yes`. v1.0.91: bewusst OHNE Custom-Header (siehe unten) — die
   // signierte URL trägt alles Nötige. Liefert {status, bytes, ok, headers, err}.
+  // #region fetchRangeChunk
   function fetchRangeChunk(url, start, end, signal, options) {
     let u;
     try { u = safeMediaUrl(url); } catch (e) {
       return Promise.resolve({ status: 0, bytes: null, ok: false, error: e.message, permanent: true, headers: null });
     }
-    if (/[?&]range=/i.test(u)) {
+    const opts = options || {};
+    // v1.1.18: googlevideo leitet Range-Abrufe sporadisch per 302 um
+    // (`cms_redirect=yes` auf einen anderen rr-Host); der Browser folgt dem
+    // Redirect und bricht mit „Failed to fetch" (Status 0) ab. Derselbe Bereich
+    // ist per HTTP-Range-Header abrufbar (206 + Content-Range) — deshalb wird
+    // nach einem Netzwerkfehler genau EINMAL mit `Range`-Header wiederholt.
+    // Der Erfolgsfall (Query-Parameter, 200/206) bleibt unverändert.
+    const useRangeHeader = opts.strategy === 'rangeHeader';
+    if (useRangeHeader) {
+      try { const p = new URL(u); p.searchParams.delete('range'); u = p.href; } catch (e) { /* ignore */ }
+    } else if (/[?&]range=/i.test(u)) {
       u = u.replace(/([?&]range=)[^&]*/i, '$1' + start + '-' + end);
     } else {
       u += (u.indexOf('?') >= 0 ? '&' : '?') + 'range=' + start + '-' + end;
@@ -558,16 +569,20 @@
     // (crbug 571722) — deshalb fiel es in Yandex/Chrome nie auf. 'Referer' und
     // 'Accept-Encoding' sind in beiden Browsern forbidden und kamen nie an.
     // Die signierte URL trägt alle nötigen Parameter (&range=/&ratebypass=).
-    const opts = options || {};
     const timeoutMs = Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : CHUNK_TIMEOUT_MS;
     const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
     let timedOut = false;
     let timer = null;
     const abortFromParent = function () { try { if (ctrl) ctrl.abort(); } catch (e) { /* ignore */ } };
+    function cleanup() {
+      if (timer) clearTimeout(timer);
+      if (signal && ctrl) signal.removeEventListener('abort', abortFromParent);
+    }
     if (signal && signal.aborted) return Promise.resolve({ status: 0, bytes: null, ok: false, aborted: true, headers: null });
     if (signal && ctrl) signal.addEventListener('abort', abortFromParent, { once: true });
     if (ctrl) timer = setTimeout(function () { timedOut = true; ctrl.abort(); }, timeoutMs);
-    return fetch(u, { signal: ctrl ? ctrl.signal : signal }).then(async function (res) {
+    const reqHeaders = useRangeHeader ? { Range: 'bytes=' + start + '-' + end } : undefined;
+    return fetch(u, { signal: ctrl ? ctrl.signal : signal, headers: reqHeaders }).then(async function (res) {
       if (!res.ok) return { status: res.status, bytes: null, ok: false, headers: res.headers };
       const ab = await readResponseLimited(res, opts.maxBytes);
       return { status: res.status, bytes: ab, ok: true, headers: res.headers };
@@ -581,12 +596,16 @@
       // v1.0.91: Ursache sichtbar machen (Netzwerk/CORS/Blocker) — wurde vorher
       // verschluckt; im Panel stand nur „Status 0" ohne jeden Anhaltspunkt.
       console.warn('[xYT] fetch fehlgeschlagen (Netzwerk/CORS/Erweiterung?): ' + (err && err.message ? err.message : String(err)));
+      // v1.1.18: zweite Strategie (HTTP-Range-Header) — genau einmal.
+      if (!useRangeHeader) {
+        console.warn('[xYT] wiederhole Chunk ' + start + '-' + end + ' als HTTP-Range-Header (ohne range-Parameter)');
+        cleanup();
+        return fetchRangeChunk(url, start, end, signal, Object.assign({}, opts, { strategy: 'rangeHeader' }));
+      }
       return { status: 0, bytes: null, ok: false, err: err, headers: null };
-    }).finally(function () {
-      if (timer) clearTimeout(timer);
-      if (signal && ctrl) signal.removeEventListener('abort', abortFromParent);
-    });
+    }).finally(cleanup);
   }
+  // #endregion fetchRangeChunk
 
   function downloadUrl(url, filename, expectedSize, signal) {
     // v1.1.05: liefert ein Promise. Vorher wurde der Download nur GESTARTET und
